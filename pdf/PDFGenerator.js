@@ -1327,17 +1327,17 @@ const PDFGenerator = () => {
 
         // Lógica especial para Recipe
         if (selectedPdfTypes.recipe) {
-          const imgData = await createPDFPage(getRecipeHTML(dataToSave), true);
+          const imgData = await createPDFPage(getRecipeHTML(dataToSave));
 
           if (isFirstPage) {
             // Caso especial: Recipe es el primer documento
-            pdf.addPage([297, 210], "landscape"); // Agregar página landscape
-            pdf.addImage(imgData, "JPEG", 0, 0, 297, 210);
+            pdf.addPage([297, 210], "portrait"); // Agregar página landscape
+            pdf.addImage(imgData, "JPEG", 0, 0, 210, 297);
             pdf.deletePage(1); // Eliminar la página portrait vacía inicial
           } else {
             // Recipe no es el primer documento
-            pdf.addPage([297, 210], "landscape");
-            pdf.addImage(imgData, "JPEG", 0, 0, 297, 210);
+            pdf.addPage([297, 210], "portrait");
+            pdf.addImage(imgData, "JPEG", 0, 0, 210, 297);
           }
 
           isFirstPage = false;
@@ -1422,9 +1422,7 @@ const PDFGenerator = () => {
           recipeFile = await printToFileAsync({
             html: htmlRecipe,
             base64: false,
-            ...(Platform.OS === "ios"
-              ? { format: "A4", orientation: "landscape" }
-              : { width: 842, height: 595 }),
+            ...(Platform.OS === "ios" ? { width: 600, height: 900 } : {}),
           });
         }
 

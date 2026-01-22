@@ -108,7 +108,7 @@ const generateMedicalReportHTML = (dataToSave) => {
                             border-right: none; /* Eliminar línea de la última celda */
                         }
                         .label {
-                            color: #000000;  /* Color negro */
+                            color: #005A9B;  /* Color negro */
                         }
                         .cell-60 { width: 60%; font-size: 10px}
                         .cell-40 { width: 40%; font-size: 10px}
@@ -132,7 +132,7 @@ const generateMedicalReportHTML = (dataToSave) => {
                         .cell-100 { width: 100%; font-size: 10px}
                         .littleTitle {
                             font-size: 13px;
-                            color: #000000;
+                            color: #fe6b00;
                             font-weight: bold;  
                         }
                         .leftPadding {left-Padding: 7px;}
@@ -205,7 +205,8 @@ const generateMedicalReportHTML = (dataToSave) => {
                     <div class="header">
                         <img src="https://wqyaqcnntzovnpxdqwtc.supabase.co/storage/v1/object/public/Signs//LogoRIF.png" class="logo" />
                         <div class="${esAndroid ? "android-margin" : ""}">
-                            <div class="titleBold">INFORME MÉDICO</div>
+                            <div class="title">INFORME DE </div>
+                            <div class="titleBold">ATENCIÓN MÉDICA</div>
                         </div>
                     </div>
     
@@ -525,7 +526,14 @@ const generateMedicalReportHTML = (dataToSave) => {
                                 }</span>
                             </div>
                         </div>
-                        <div class="row">
+
+
+
+                        <div class="displayFlex ${
+                      esAndroid ? "android-margin" : ""
+                    }">
+                        <div class="izquierdaImg">
+                            <div class="row">
                             <div class="cell cell-100"><span class="label">Paraclínicos:</span> ${
                               dataToSave.Paraclinicos
                             }</div>
@@ -545,11 +553,24 @@ const generateMedicalReportHTML = (dataToSave) => {
                               dataToSave.Referido
                             }</div>
                         </div>
+                        </div>
+                        <div class="derechaImg" >
+                            <img src="${
+                              dataToSave.firmaUrl
+                            }" style="width:150px; height:70px;" />
+                        </div>
                     </div>
-                    <div class="form-container displayFlex ${
+
+
+
+
+
+                        
+                    </div>
+                    <div class="form-container ${
                       esAndroid ? "android-margin" : ""
                     }">
-                        <div class="izquierdaImg">
+                        
                             <div class="row">
                                 <div class="cell cell-60"><span class="label">Nombre Médico de Consulta:</span> ${
                                   dataToSave.userName
@@ -566,7 +587,7 @@ const generateMedicalReportHTML = (dataToSave) => {
                                   dataToSave.HoraFinAT
                                 } </div>
                             </div>
-                            <div class="row">
+                            <div class="row"> 
                                 <div class="cell cell-50"><span class="label">Traslado:</span> ${
                                   dataToSave.Traslado
                                 }</div>
@@ -587,12 +608,7 @@ const generateMedicalReportHTML = (dataToSave) => {
                                   dataToSave.EstadoClinicoFinal
                                 }</div>                           
                             </div> 
-                        </div>
-                        <div class="derechaImg" >
-                            <img src="${
-                              dataToSave.firmaUrl
-                            }" style="width:150px; height:90px;" />
-                        </div>
+                        
                     </div>
                     </div>
                     
