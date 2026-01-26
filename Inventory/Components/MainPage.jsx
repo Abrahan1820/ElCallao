@@ -230,6 +230,15 @@ const MainMenu = () => {
                 onPress={() => navigation.navigate("StatisticsScreen")}
               />
               )}
+
+              {esAdministrador && (
+              <Tarjeta
+                imagen={require("../Assets/graph.png")} // Cambia la imagen según tu diseño
+                texto="Gestion Administrativa"
+                pagina="AdminManagment"
+                onPress={() => navigation.navigate("AdminManagment")}
+              />
+              )}
           </View>
         </View>
 

@@ -17,6 +17,7 @@ import AdminPasswordChange from "../Admin/AdminPasswordChange";
 import AdminInsurance from "../Admin/AdminInsurance";
 import AdminProviders from "../Admin/AdminProvider";
 import StatisticsScreen from "../Inventory/Components/StatisticsScreen";
+import AdminManagment from "../Admin/AdminManagment";
 
 
 
@@ -180,6 +181,7 @@ const Main = () => {
       <Stack.Screen name="AdminInsurance" component={AdminInsurance} options={{ headerShown: false }}></Stack.Screen>
       <Stack.Screen name="AdminProvider" component={AdminProviders} options={{ headerShown: false }}></Stack.Screen>
       <Stack.Screen name="StatisticsScreen" component={StatisticsScreen} options={{ headerShown: false }}></Stack.Screen>
+      <Stack.Screen name="AdminManagment" component={AdminManagment} options={{ headerShown: false }}></Stack.Screen>
       
       
       </Stack.Navigator>
