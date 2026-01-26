@@ -239,6 +239,15 @@ const MainMenu = () => {
                 onPress={() => navigation.navigate("AdminManagment")}
               />
               )}
+
+              {esAdministrador && (
+              <Tarjeta
+                imagen={require("../Assets/graph.png")} // Cambia la imagen según tu diseño
+                texto="Pagos"
+                pagina="PagosAdmin"
+                onPress={() => navigation.navigate("PagosAdmin")}
+              />
+              )}
           </View>
         </View>
 

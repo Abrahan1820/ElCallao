@@ -18,6 +18,8 @@ import AdminInsurance from "../Admin/AdminInsurance";
 import AdminProviders from "../Admin/AdminProvider";
 import StatisticsScreen from "../Inventory/Components/StatisticsScreen";
 import AdminManagment from "../Admin/AdminManagment";
+import PagosAdmin from "../Admin/PagosAdmin";
+import PagosDoctor from "../Admin/PagosDoctor";
 
 
 
@@ -182,7 +184,8 @@ const Main = () => {
       <Stack.Screen name="AdminProvider" component={AdminProviders} options={{ headerShown: false }}></Stack.Screen>
       <Stack.Screen name="StatisticsScreen" component={StatisticsScreen} options={{ headerShown: false }}></Stack.Screen>
       <Stack.Screen name="AdminManagment" component={AdminManagment} options={{ headerShown: false }}></Stack.Screen>
-      
+      <Stack.Screen name="PagosAdmin" component={PagosAdmin} options={{ headerShown: false }}></Stack.Screen>
+      <Stack.Screen name="PagosDoctor" component={PagosDoctor} options={{ headerShown: false }}></Stack.Screen>
       
       </Stack.Navigator>
       <Toast config={toastConfig} />
