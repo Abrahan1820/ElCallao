@@ -19,6 +19,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useNavigation, useFocusEffect } from "@react-navigation/native";
 import ProductSelectionModal from "./ProductSelectionModal";
+import PaymentMethodModal from "./PaymentMethodModal";
 
 const BillingScreen = () => {
   const navigation = useNavigation();
@@ -29,8 +30,10 @@ const BillingScreen = () => {
   const [products, setProducts] = useState([]);
   const [filteredProducts, setFilteredProducts] = useState([]);
   const [categoriasMap, setCategoriasMap] = useState({});
+  const [categorias, setCategorias] = useState([]);
   const [userData, setUserData] = useState(null);
   const [modalVisible, setModalVisible] = useState(false);
+  const [paymentModalVisible, setPaymentModalVisible] = useState(false);
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState(false);
   const [searchText, setSearchText] = useState("");
@@ -38,11 +41,47 @@ const BillingScreen = () => {
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [quantityModalVisible, setQuantityModalVisible] = useState(false);
   const [tempQuantity, setTempQuantity] = useState("1");
+  const [selectedCategoria, setSelectedCategoria] = useState("todas");
+  const [categoriasExpandidas, setCategoriasExpandidas] = useState(false);
   
-  // Resumen de factura
-  const [subtotal, setSubtotal] = useState(0);
-  const [iva, setIva] = useState(0);
-  const [total, setTotal] = useState(0);
+  // Estados para método de pago
+  const [paymentMethod, setPaymentMethod] = useState(null);
+  const [mixedPayment, setMixedPayment] = useState({
+    usd: "",
+    ves: "",
+    vesEfectivo: "",
+  });
+  
+  // Resumen de factura (solo monto del producto, sin IVA)
+  const [subtotalUSD, setSubtotalUSD] = useState(0);
+  const [subtotalVES, setSubtotalVES] = useState(0);
+  // Agrega este estado junto a los demás estados
+const [TASA_CAMBIO, setTASA_CAMBIO] = useState(60); // Valor por defecto mientras carga
+
+// Agrega esta función para cargar la tasa del BCV
+const loadTasaBCV = async () => {
+  try {
+    const { data, error } = await supa
+      .from("tasaBCV")
+      .select("precioVESUSD")
+      .eq("id", 1)
+      .single();
+
+    if (error) throw error;
+    
+    if (data) {
+      // El campo se llama "precioVES/USD" - puede tener un nombre especial
+      // Dependiendo de cómo se llame exactamente en tu BD
+      const tasa = data["precioVESUSD"];
+      setTASA_CAMBIO(tasa || 60);
+    }
+  } catch (error) {
+    console.error("Error cargando tasa BCV:", error);
+    // Mantener valor por defecto si hay error
+  }
+};
+
+ 
 
   // -----------------------------
   // 👤 Obtener usuario desde AsyncStorage
@@ -66,28 +105,8 @@ const BillingScreen = () => {
   // 📦 Obtener empresaID a partir del usuario
   // -----------------------------
   const getEmpresaIdFromUser = async (user) => {
-    if (!user || !user.empresaID) {
-      console.error("Usuario no tiene empresa asignada");
-      return null;
-    }
-
-    try {
-      if (typeof user.empresaID === 'number' || !isNaN(parseInt(user.empresa))) {
-        return user.empresaID;
-      } else {
-        const { data, error } = await supa
-          .from("company")
-          .select("nombre")
-          .eq("empresaID", user.empresaID)
-          .single();
-
-        if (error) throw error;
-        return data?.nombre;
-      }
-    } catch (error) {
-      console.error("Error obteniendo empresaID:", error);
-      return null;
-    }
+    if (!user || !user.empresaID) return null;
+    return user.empresaID;
   };
 
   // -----------------------------
@@ -97,15 +116,21 @@ const BillingScreen = () => {
     try {
       const { data, error } = await supa
         .from("productCategory")
-        .select("id, nombre");
+        .select("id, nombre")
+        .order("nombre");
 
       if (error) throw error;
 
       const map = {};
+      const lista = [{ id: "todas", nombre: "Todas las categorías" }];
+      
       data.forEach((cat) => {
         map[cat.id] = cat.nombre;
+        lista.push({ id: cat.id, nombre: cat.nombre });
       });
+      
       setCategoriasMap(map);
+      setCategorias(lista);
     } catch (error) {
       console.error("❌ Error cargando categorías:", error);
     }
@@ -118,13 +143,19 @@ const BillingScreen = () => {
     if (!empId) return [];
     
     try {
-      const { data, error } = await supa
+      let query = supa
         .from("product")
         .select("*")
         .eq("empresaID", empId)
-        .eq("esActivo", true)
-        .order("nombre", { ascending: true });
-      console.log(data);  
+        .eq("esActivo", true);
+      
+      // Aplicar filtro por categoría si no es "todas"
+      if (selectedCategoria !== "todas") {
+        query = query.eq("categoriaID", selectedCategoria);
+      }
+      
+      const { data, error } = await query.order("nombre", { ascending: true });
+
       if (error) throw error;
       return data || [];
     } catch (error) {
@@ -153,8 +184,8 @@ const BillingScreen = () => {
       }
       
       setEmpresaId(user.empresaID);
-      console.log(user.empresaID);
       await loadCategorias();
+      await loadTasaBCV();
       const productsData = await fetchProducts(user.empresaID);
       
       // Filtrar productos con stock > 0
@@ -169,6 +200,19 @@ const BillingScreen = () => {
     }
   };
 
+  // Recargar productos cuando cambia el filtro de categoría
+  useEffect(() => {
+    if (empresaId) {
+      const reloadProducts = async () => {
+        const productsData = await fetchProducts(empresaId);
+        const availableProducts = productsData.filter(p => p.stockActual > 0);
+        setProducts(availableProducts);
+        setFilteredProducts(availableProducts);
+      };
+      reloadProducts();
+    }
+  }, [selectedCategoria]);
+
   // -----------------------------
   // 🔄 Cargar al iniciar
   // -----------------------------
@@ -179,21 +223,21 @@ const BillingScreen = () => {
   useFocusEffect(
     useCallback(() => {
       loadAllData();
-      setCart([]); // Limpiar carrito al salir/entrar
+      setCart([]);
+      setPaymentMethod(null);
+      setMixedPayment({ usd: "", ves: "", vesEfectivo: "" });
     }, [])
   );
 
   // -----------------------------
-  // 🧮 Calcular totales cuando cambia el carrito
+  // 🧮 Calcular totales (solo monto del producto)
   // -----------------------------
   useEffect(() => {
-    const newSubtotal = cart.reduce((sum, item) => sum + (item.precioVentaUSD * item.quantity), 0);
-    const newIva = newSubtotal * 0.16; // 16% IVA
-    const newTotal = newSubtotal + newIva;
+    const usd = cart.reduce((sum, item) => sum + (item.precioVentaUSD * item.quantity), 0);
+    const ves = cart.reduce((sum, item) => sum + (item.precioVentaVES * item.quantity), 0);
 
-    setSubtotal(newSubtotal);
-    setIva(newIva);
-    setTotal(newTotal);
+    setSubtotalUSD(usd);
+    setSubtotalVES(ves);
   }, [cart]);
 
   // -----------------------------
@@ -291,100 +335,150 @@ const BillingScreen = () => {
   };
 
   // -----------------------------
-  // ✅ Finalizar venta
+  // 💰 Manejar pago
   // -----------------------------
-  const finalizeSale = async () => {
+  const handlePayment = () => {
     if (cart.length === 0) {
       Alert.alert("Error", "No hay productos en el carrito");
       return;
     }
+    setPaymentModalVisible(true);
+  };
 
-    Alert.alert(
-      "Confirmar venta",
-      `¿Estás seguro de realizar esta venta por $${total.toFixed(2)}?`,
-      [
-        { text: "Cancelar", style: "cancel" },
-        { 
-          text: "Confirmar", 
-          onPress: async () => {
-            setProcessing(true);
-            try {
-              // 1. Verificar stock nuevamente
-              for (const item of cart) {
-                const { data, error } = await supa
-                  .from("product")
-                  .select("stockActual")
-                  .eq("id", item.id)
-                  .single();
+  // -----------------------------
+  // ✅ Finalizar venta con método de pago
+  // -----------------------------
+  const finalizeSaleWithPayment = async () => {
+    if (!paymentMethod) {
+      Alert.alert("Error", "Selecciona un método de pago");
+      return;
+    }
 
-                if (error) throw error;
+    // Validar pago mixto
+    if (paymentMethod === "mixto") {
+      const usdAmount = parseFloat(mixedPayment.usd) || 0;
+      const vesAmount = parseFloat(mixedPayment.ves) || 0;
+      const vesEfectivoAmount = parseFloat(mixedPayment.vesEfectivo) || 0;
+      
+      // Convertir todo a USD para comparar
+      const totalPaidUSD = usdAmount + (vesAmount / TASA_CAMBIO) + (vesEfectivoAmount / TASA_CAMBIO);
+      
+      if (Math.abs(totalPaidUSD - subtotalUSD) > 0.01) {
+        Alert.alert("Error", "La suma de los pagos no coincide con el total en USD");
+        return;
+      }
+    }
 
-                if (data.stockActual < item.quantity) {
-                  Alert.alert(
-                    "Error", 
-                    `Stock insuficiente para ${item.nombre}. Stock actual: ${data.stockActual}`
-                  );
-                  setProcessing(false);
-                  return;
-                }
-              }
+    setProcessing(true);
+    try {
+      // 1. Verificar stock nuevamente
+      for (const item of cart) {
+        const { data, error } = await supa
+          .from("product")
+          .select("stockActual")
+          .eq("id", item.id)
+          .single();
 
-              // 2. Actualizar stock y crear movimientos para cada producto
-              for (const item of cart) {
-                // Actualizar stock
-                const { error: updateError } = await supa
-                  .from("product")
-                  .update({ stockActual: item.stockActual - item.quantity })
-                  .eq("id", item.id);
+        if (error) throw error;
 
-                if (updateError) throw updateError;
+        if (data.stockActual < item.quantity) {
+          Alert.alert(
+            "Error", 
+            `Stock insuficiente para ${item.nombre}. Stock actual: ${data.stockActual}`
+          );
+          setProcessing(false);
+          return;
+        }
+      }
 
-                // Crear movimiento
-                const { error: movementError } = await supa
-  .from("productMovement")
-  .insert({
-    productoID: item.id,                    
-    tipoMovimiento: "salida",               
-    cantidad: item.quantity,               
-    precioCompraUSD: item.precioCompraUSD,   
-    precioVentaUSD: item.precioVentaUSD,    
-    precioCompraVES: item.precioCompraVES,  
-    precioVentaVES: item.precioVentaVES,    
-    empresaID: empresaId,                 
-    tipoTransaccion: "efectivo",             
-    observaciones: `Venta realizada por ${userData?.nombre || "usuario"}`,
-    usuarioCedula: userData?.cedula        
-  });
-                if (movementError) throw movementError;
-              }
+      // 2. Actualizar stock y crear movimientos para cada producto
+      for (const item of cart) {
+        // Actualizar stock
+        const { error: updateError } = await supa
+          .from("product")
+          .update({ stockActual: item.stockActual - item.quantity })
+          .eq("id", item.id);
 
-              // 3. Limpiar carrito
-              setCart([]);
-              
-              Alert.alert(
-                "Éxito", 
-                "Venta realizada correctamente",
-                [
-                  { 
-                    text: "OK", 
-                    onPress: () => {
-                      // Recargar productos para actualizar stock
-                      loadAllData();
-                    }
-                  }
-                ]
-              );
+        if (updateError) throw updateError;
 
-            } catch (error) {
-              console.error("Error finalizando venta:", error);
-              Alert.alert("Error", "No se pudo completar la venta");
-            } finally {
-              setProcessing(false);
+        // Determinar valores según método de pago
+        let precioVentaUSD = 0;
+        let precioVentaVES = 0;
+        let precioVentaVESEfectivo = 0;
+        let tipoTransaccion = "";
+
+        switch (paymentMethod) {
+          case "debito":
+            precioVentaVES = item.precioVentaVES * item.quantity;
+            tipoTransaccion = "Debito";
+            break;
+          case "efectivoUSD":
+            precioVentaUSD = item.precioVentaUSD * item.quantity;
+            tipoTransaccion = "Efectivo USD";
+            break;
+          case "efectivoVES":
+            precioVentaVESEfectivo = item.precioVentaVES * item.quantity;
+            tipoTransaccion = "Efectivo VES";
+            break;
+          case "mixto":
+            // Distribuir proporcionalmente el pago mixto
+            const usdProportion = (parseFloat(mixedPayment.usd) || 0) / subtotalUSD;
+            const vesProportion = (parseFloat(mixedPayment.ves) || 0) / subtotalUSD;
+            const vesEfectivoProportion = (parseFloat(mixedPayment.vesEfectivo) || 0) / subtotalUSD;
+            
+            precioVentaUSD = (item.precioVentaUSD * item.quantity) * usdProportion;
+            precioVentaVES = (item.precioVentaVES * item.quantity) * vesProportion;
+            precioVentaVESEfectivo = (item.precioVentaVES * item.quantity) * vesEfectivoProportion;
+            tipoTransaccion = "Mixto";
+            break;
+        }
+
+        // Crear movimiento
+        const { error: movementError } = await supa
+          .from("productMovement")
+          .insert({
+            productoID: item.id,
+            tipoMovimiento: "salida",
+            cantidad: item.quantity,
+            precioCompraUSD: item.precioCompraUSD,
+            precioVentaUSD: precioVentaUSD,
+            precioCompraVES: item.precioCompraVES,
+            precioVentaVES: precioVentaVES,
+            precioVentaVESEfectivo: precioVentaVESEfectivo,
+            empresaID: empresaId,
+            tipoTransaccion: tipoTransaccion,
+            observaciones: `Venta realizada por ${userData?.nombre || "usuario"}`,
+            usuarioCedula: userData?.cedula
+          });
+
+        if (movementError) throw movementError;
+      }
+
+      // 3. Limpiar todo
+      setCart([]);
+      setPaymentMethod(null);
+      setMixedPayment({ usd: "", ves: "", vesEfectivo: "" });
+      setPaymentModalVisible(false);
+      
+      Alert.alert(
+        "Éxito", 
+        "Venta realizada correctamente",
+        [
+          { 
+            text: "OK", 
+            onPress: () => {
+              loadAllData();
             }
           }
-        }
-      ]
-    );
+        ]
+      );
+
+    } catch (error) {
+      console.error("Error finalizando venta:", error);
+      Alert.alert("Error", "No se pudo completar la venta");
+    } finally {
+      setProcessing(false);
+    }
   };
 
   // -----------------------------
@@ -424,6 +518,56 @@ const BillingScreen = () => {
             <Text style={styles.headerSubtitle}>Nueva venta</Text>
           </LinearGradient>
 
+          {/* Selector de categoría - VERTICAL */}
+          <View style={styles.categoryContainer}>
+            <TouchableOpacity 
+    style={styles.categoryHeader}
+    onPress={() => setCategoriasExpandidas(!categoriasExpandidas)}
+  >
+    <View style={styles.categoryHeaderLeft}>
+      <MaterialCommunityIcons name="tag-outline" size={20} color="#64748b" />
+      <Text style={styles.categoryTitle}>
+        {selectedCategoria === "todas" 
+          ? "Todas las categorías" 
+          : categorias.find(c => c.id === selectedCategoria)?.nombre || "Seleccionar categoría"}
+      </Text>
+    </View>
+    <MaterialCommunityIcons 
+      name={categoriasExpandidas ? "chevron-up" : "chevron-down"} 
+      size={24} 
+      color="#64748b" 
+    />
+  </TouchableOpacity>   
+
+            {categoriasExpandidas && (
+              <View style={styles.categoryList}>
+                {categorias.map((cat) => (
+                  <TouchableOpacity
+                    key={cat.id}
+                    style={[
+                      styles.categoryItem,
+                      selectedCategoria === cat.id && styles.categoryItemActive
+                    ]}
+                    onPress={() => {
+                      setSelectedCategoria(cat.id);
+                      setCategoriasExpandidas(false);
+                    }}
+                  >
+                    <Text style={[
+                      styles.categoryItemText,
+                      selectedCategoria === cat.id && styles.categoryItemTextActive
+                    ]}>
+                      {cat.nombre}
+                    </Text>
+                    {selectedCategoria === cat.id && (
+                      <MaterialCommunityIcons name="check" size={18} color="white" />
+                    )}
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
+          </View>
+
           {/* Botón para agregar productos */}
           <TouchableOpacity 
             style={styles.addButton}
@@ -444,7 +588,9 @@ const BillingScreen = () => {
                 <View key={item.id} style={styles.cartItem}>
                   <View style={styles.cartItemInfo}>
                     <Text style={styles.cartItemName}>{item.nombre}</Text>
-                    <Text style={styles.cartItemPrice}>${item.precioVentaUSD} c/u</Text>
+                    <Text style={styles.cartItemPrice}>
+                      ${item.precioVentaUSD} / Bs.{item.precioVentaVES} c/u
+                    </Text>
                   </View>
                   
                   <View style={styles.cartItemControls}>
@@ -472,9 +618,14 @@ const BillingScreen = () => {
                     </TouchableOpacity>
                   </View>
                   
-                  <Text style={styles.cartItemSubtotal}>
-                    Subtotal: ${(item.precioVentaUSD * item.quantity).toFixed(2)}
-                  </Text>
+                  <View style={styles.cartItemTotals}>
+                    <Text style={styles.cartItemTotalUSD}>
+                      USD: ${(item.precioVentaUSD * item.quantity).toFixed(2)}
+                    </Text>
+                    <Text style={styles.cartItemTotalVES}>
+                      VES: Bs. {(item.precioVentaVES * item.quantity).toFixed(2)}
+                    </Text>
+                  </View>
                 </View>
               ))
             ) : (
@@ -486,30 +637,48 @@ const BillingScreen = () => {
             )}
           </View>
 
-          {/* Resumen de factura */}
+          {/* Resumen de factura (sin IVA) */}
           {cart.length > 0 && (
             <View style={styles.summaryContainer}>
               <Text style={styles.sectionTitle}>Resumen</Text>
               
               <View style={styles.summaryRow}>
-                <Text style={styles.summaryLabel}>Subtotal:</Text>
-                <Text style={styles.summaryValue}>${subtotal.toFixed(2)}</Text>
+                <Text style={styles.summaryLabel}>Total USD:</Text>
+                <Text style={styles.summaryValueUSD}>${subtotalUSD.toFixed(2)}</Text>
               </View>
               
               <View style={styles.summaryRow}>
-                <Text style={styles.summaryLabel}>IVA (16%):</Text>
-                <Text style={styles.summaryValue}>${iva.toFixed(2)}</Text>
-              </View>
-              
-              <View style={[styles.summaryRow, styles.totalRow]}>
-                <Text style={styles.totalLabel}>TOTAL:</Text>
-                <Text style={styles.totalValue}>${total.toFixed(2)}</Text>
+                <Text style={styles.summaryLabel}>Total VES:</Text>
+                <Text style={styles.summaryValueVES}>Bs. {subtotalVES.toFixed(2)}</Text>
               </View>
 
+              {/* Botón para seleccionar método de pago */}
               <TouchableOpacity 
-                style={styles.finalizeButton}
-                onPress={finalizeSale}
-                disabled={processing}
+                style={styles.paymentButton}
+                onPress={handlePayment}
+              >
+                <MaterialCommunityIcons name="cash" size={24} color="white" />
+                <Text style={styles.paymentButtonText}>
+                  {paymentMethod ? "Cambiar método de pago" : "Seleccionar método de pago"}
+                </Text>
+              </TouchableOpacity>
+
+              {paymentMethod && (
+                <View style={styles.selectedPayment}>
+                  <Text style={styles.selectedPaymentText}>
+                    Método seleccionado: {
+                      paymentMethod === "debito" ? "Débito" :
+                      paymentMethod === "efectivoUSD" ? "Efectivo USD" :
+                      paymentMethod === "efectivoVES" ? "Efectivo VES" : "Mixto"
+                    }
+                  </Text>
+                </View>
+              )}
+
+              <TouchableOpacity 
+                style={[styles.finalizeButton, !paymentMethod && styles.finalizeButtonDisabled]}
+                onPress={finalizeSaleWithPayment}
+                disabled={processing || !paymentMethod}
               >
                 {processing ? (
                   <ActivityIndicator size="small" color="white" />
@@ -606,6 +775,19 @@ const BillingScreen = () => {
           </View>
         </View>
       </Modal>
+
+      {/* Modal de método de pago */}
+      <PaymentMethodModal
+        visible={paymentModalVisible}
+        onClose={() => setPaymentModalVisible(false)}
+        subtotalUSD={subtotalUSD}
+        subtotalVES={subtotalVES}
+        paymentMethod={paymentMethod}
+        setPaymentMethod={setPaymentMethod}
+        mixedPayment={mixedPayment}
+        setMixedPayment={setMixedPayment}
+        tasaCambio={TASA_CAMBIO}
+      />
     </SafeAreaView>
   );
 };
@@ -649,6 +831,53 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: 'rgba(255,255,255,0.8)',
     marginTop: 5,
+  },
+  // Nuevos estilos para categorías verticales
+  categoryContainer: {
+    backgroundColor: 'white',
+    marginHorizontal: 16,
+    marginBottom: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    overflow: 'hidden',
+  },
+  categoryHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 16,
+    backgroundColor: '#f8fafc',
+  },
+  categoryTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1e293b',
+  },
+  categoryList: {
+    maxHeight: 300,
+    borderTopWidth: 1,
+    borderTopColor: '#e2e8f0',
+  },
+  categoryItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e2e8f0',
+    backgroundColor: 'white',
+  },
+  categoryItemActive: {
+    backgroundColor: '#45c0e8',
+  },
+  categoryItemText: {
+    fontSize: 14,
+    color: '#1e293b',
+  },
+  categoryItemTextActive: {
+    color: 'white',
+    fontWeight: '600',
   },
   addButton: {
     backgroundColor: '#27ae60',
@@ -703,7 +932,7 @@ const styles = StyleSheet.create({
     color: '#1e293b',
   },
   cartItemPrice: {
-    fontSize: 14,
+    fontSize: 13,
     color: '#64748b',
     marginTop: 2,
   },
@@ -731,11 +960,19 @@ const styles = StyleSheet.create({
     marginLeft: 'auto',
     padding: 8,
   },
-  cartItemSubtotal: {
+  cartItemTotals: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  cartItemTotalUSD: {
     fontSize: 14,
     fontWeight: '600',
     color: '#059669',
-    textAlign: 'right',
+  },
+  cartItemTotalVES: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#45c0e8',
   },
   emptyCart: {
     alignItems: 'center',
@@ -775,27 +1012,44 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#64748b',
   },
-  summaryValue: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#1e293b',
-  },
-  totalRow: {
-    borderBottomWidth: 0,
-    marginTop: 8,
-    paddingTop: 8,
-    borderTopWidth: 2,
-    borderTopColor: '#e2e8f0',
-  },
-  totalLabel: {
+  summaryValueUSD: {
     fontSize: 16,
     fontWeight: '700',
-    color: '#1e293b',
-  },
-  totalValue: {
-    fontSize: 20,
-    fontWeight: '700',
     color: '#059669',
+  },
+  summaryValueVES: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#45c0e8',
+  },
+  paymentButton: {
+    backgroundColor: '#45c0e8',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 16,
+    borderRadius: 12,
+    marginTop: 16,
+    gap: 8,
+  },
+  paymentButtonText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  selectedPayment: {
+    marginTop: 12,
+    padding: 12,
+    backgroundColor: '#f0f9ff',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#45c0e8',
+  },
+  selectedPaymentText: {
+    color: '#45c0e8',
+    fontSize: 14,
+    fontWeight: '600',
+    textAlign: 'center',
   },
   finalizeButton: {
     backgroundColor: '#27ae60',
@@ -806,6 +1060,10 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     marginTop: 16,
     gap: 8,
+  },
+  finalizeButtonDisabled: {
+    backgroundColor: '#94a3b8',
+    opacity: 0.5,
   },
   finalizeButtonText: {
     color: 'white',

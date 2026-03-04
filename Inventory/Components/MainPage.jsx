@@ -234,6 +234,15 @@ const MainMenu = () => {
               {esAdministrador && (
               <Tarjeta
                 imagen={require("../Assets/graph.png")} // Cambia la imagen según tu diseño
+                texto="Tasa BCV"
+                pagina="TasaBCV"
+                onPress={() => navigation.navigate("TasaBCV")}
+              />
+              )}
+
+              {esAdministrador && (
+              <Tarjeta
+                imagen={require("../Assets/graph.png")} // Cambia la imagen según tu diseño
                 texto="Manejo Inventario"
                 pagina="Inventory"
                 onPress={() => navigation.navigate("Inventory")}

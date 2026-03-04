@@ -26,6 +26,7 @@ import BillingScreen from "../Inventory/Components/BillingScreen";
 import ProductSelectionModal from "../Inventory/Components/ProductSelectionModal";
 import MovementsScreen from "../Inventory/Components/MovementsScreen";
 import PurchaseScreen from "../Inventory/Components/PurchaseScreen";
+import TasaBCVScreen from "../Inventory/Components/TasaBCVScreen";
 
 
 
@@ -198,6 +199,7 @@ const Main = () => {
       <Stack.Screen name="ProductSelectionModal" component={ProductSelectionModal} options={{ headerShown: false }}></Stack.Screen>
       <Stack.Screen name="Movements" component={MovementsScreen} options={{ headerShown: false }}></Stack.Screen>
       <Stack.Screen name="Purchase" component={PurchaseScreen} options={{ headerShown: false }}></Stack.Screen>
+      <Stack.Screen name="TasaBCV" component={TasaBCVScreen} options={{ headerShown: false }}></Stack.Screen>
       
       
       </Stack.Navigator>
