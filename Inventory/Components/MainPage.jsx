@@ -198,15 +198,15 @@ const MainMenu = () => {
           <View style={Styles.contenedorFilas}>
             <Tarjeta
               imagen={require("../Assets/documento.png")}
-              texto="Generar Informe"
-              pagina="PDFGenerator"
-              onPress={() => navigation.navigate("PDFGenerator")}
+              texto="Facturar"
+              pagina="Billing"
+              onPress={() => navigation.navigate("Billing")}
             />
             <Tarjeta
               imagen={require("../Assets/listIcon.png")}
-              texto="Lista de Informes"
-              pagina="PDFModify"
-              onPress={() => navigation.navigate("PDFModify")}
+              texto="Transacciones"
+              pagina="Movements"
+              onPress={() => navigation.navigate("Movements")}
             />
             <Tarjeta
               imagen={require("../Assets/usuario.png")} // Cambia la imagen según tu diseño
@@ -234,18 +234,18 @@ const MainMenu = () => {
               {esAdministrador && (
               <Tarjeta
                 imagen={require("../Assets/graph.png")} // Cambia la imagen según tu diseño
-                texto="Gestion Administrativa"
-                pagina="AdminManagment"
-                onPress={() => navigation.navigate("AdminManagment")}
+                texto="Manejo Inventario"
+                pagina="Inventory"
+                onPress={() => navigation.navigate("Inventory")}
               />
               )}
 
               {esAdministrador && (
               <Tarjeta
                 imagen={require("../Assets/graph.png")} // Cambia la imagen según tu diseño
-                texto="Pagos"
-                pagina="PagosAdmin"
-                onPress={() => navigation.navigate("PagosAdmin")}
+                texto="Compras"
+                pagina="Purchase"
+                onPress={() => navigation.navigate("Purchase")}
               />
               )}
           </View>

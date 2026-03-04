@@ -20,6 +20,12 @@ import StatisticsScreen from "../Inventory/Components/StatisticsScreen";
 import AdminManagment from "../Admin/AdminManagment";
 import PagosAdmin from "../Admin/PagosAdmin";
 import PagosDoctor from "../Admin/PagosDoctor";
+import InventoryScreen from "../Inventory/Components/InventoryScreen";
+import ProductDetailScreen from "../Inventory/Components/ProductDetailScreen";
+import BillingScreen from "../Inventory/Components/BillingScreen";
+import ProductSelectionModal from "../Inventory/Components/ProductSelectionModal";
+import MovementsScreen from "../Inventory/Components/MovementsScreen";
+import PurchaseScreen from "../Inventory/Components/PurchaseScreen";
 
 
 
@@ -186,6 +192,13 @@ const Main = () => {
       <Stack.Screen name="AdminManagment" component={AdminManagment} options={{ headerShown: false }}></Stack.Screen>
       <Stack.Screen name="PagosAdmin" component={PagosAdmin} options={{ headerShown: false }}></Stack.Screen>
       <Stack.Screen name="PagosDoctor" component={PagosDoctor} options={{ headerShown: false }}></Stack.Screen>
+      <Stack.Screen name="Inventory" component={InventoryScreen} options={{ headerShown: false }}></Stack.Screen>
+      <Stack.Screen name="ProductDetail" component={ProductDetailScreen} options={{ headerShown: false }}></Stack.Screen>
+      <Stack.Screen name="Billing" component={BillingScreen} options={{ headerShown: false }}></Stack.Screen>
+      <Stack.Screen name="ProductSelectionModal" component={ProductSelectionModal} options={{ headerShown: false }}></Stack.Screen>
+      <Stack.Screen name="Movements" component={MovementsScreen} options={{ headerShown: false }}></Stack.Screen>
+      <Stack.Screen name="Purchase" component={PurchaseScreen} options={{ headerShown: false }}></Stack.Screen>
+      
       
       </Stack.Navigator>
       <Toast config={toastConfig} />
