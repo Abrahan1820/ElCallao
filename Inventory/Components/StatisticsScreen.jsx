@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import {
   View,
   Text,
@@ -7,395 +7,727 @@ import {
   TouchableOpacity,
   SafeAreaView,
   StatusBar,
+  ActivityIndicator,
+  Dimensions,
 } from "react-native";
-import { Card } from "react-native-paper";
 import { SupaClient } from "../../Supabase/supabase";
 import NavBar from "../../NavBar/Components/NavBar";
+import { MaterialCommunityIcons } from "@expo/vector-icons";
+import { LinearGradient } from "expo-linear-gradient";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useNavigation, useFocusEffect } from "@react-navigation/native";
+import { LineChart } from "react-native-chart-kit";
 
-// --------------------------------------------------
-// 🔧 Helpers de fecha
-// --------------------------------------------------
-const parseFecha = (fechaStr) => {
-  if (!fechaStr) return null;
-  const [dia, mes, año] = fechaStr.split("/");
-  return new Date(año, mes - 1, dia);
-};
+const { width } = Dimensions.get('window');
 
-const startOfDay = (d) => {
-  const x = new Date(d);
-  x.setHours(0, 0, 0, 0);
-  return x;
-};
-
-const endOfDay = (d) => {
-  const x = new Date(d);
-  x.setHours(23, 59, 59, 999);
-  return x;
-};
-
-const getDateRange = (filter) => {
-  const now = new Date();
-  const todayStart = startOfDay(now);
-  const todayEnd = endOfDay(now);
-
-  switch (filter) {
-    case "hoy":
-      return { inicio: todayStart, fin: todayEnd };
-
-    case "ayer": {
-      const d = new Date(now);
-      d.setDate(d.getDate() - 1);
-      return { inicio: startOfDay(d), fin: endOfDay(d) };
-    }
-
-    case "semana": {
-      const d = new Date(now);
-      d.setDate(d.getDate() - 6);
-      return { inicio: startOfDay(d), fin: todayEnd };
-    }
-
-    case "mes": {
-      const d = new Date(now);
-      d.setMonth(d.getMonth() - 1);
-      return { inicio: startOfDay(d), fin: todayEnd };
-    }
-
-    case "90dias": {
-      const d = new Date(now);
-      d.setDate(d.getDate() - 89);
-      return { inicio: startOfDay(d), fin: todayEnd };
-    }
-
-    default:
-      return { inicio: null, fin: null };
-  }
-};
-
-// --------------------------------------------------
-// 📊 Pantalla principal
-// --------------------------------------------------
 const StatisticsScreen = () => {
+  const navigation = useNavigation();
   const supa = SupaClient();
 
-  const [reports, setReports] = useState([]);
-  const [filteredReports, setFilteredReports] = useState([]);
+  // Estados
+  const [movements, setMovements] = useState([]);
+  const [products, setProducts] = useState({});
+  const [productsList, setProductsList] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [userData, setUserData] = useState(null);
+  const [empresaId, setEmpresaId] = useState(null);
+  
+  // Filtro de período para estadísticas
+  const [selectedPeriodo, setSelectedPeriodo] = useState("semana");
+  
+  // Datos de estadísticas
+  const [stats, setStats] = useState({
+    totalVentas: 0,
+    ingresosUSD: 0,
+    ingresosVESDebito: 0,
+    ingresosVESEfectivo: 0,
+  });
+  
+  // Datos para los gráficos
+  const [chartDataUSD, setChartDataUSD] = useState(null);
+  const [chartDataVES, setChartDataVES] = useState(null);
+  
+  // Top 30 productos más vendidos
+  const [topProducts, setTopProducts] = useState([]);
 
-  const [estadoMap, setEstadoMap] = useState({});
-  const [doctorMap, setDoctorMap] = useState({});
-  const [filter, setFilter] = useState("hoy");
-
-  const [statsEstados, setStatsEstados] = useState({});
-  const [statsDoctores, setStatsDoctores] = useState({});
-  const [statsDias, setStatsDias] = useState({});
-  const [statsProveedores, setStatsProveedores] = useState({});
-
-  // --------------------------------------------------
-  // 📍 Cargar estados
-  // --------------------------------------------------
-  const loadEstados = async () => {
-    const { data, error } = await supa
-      .from("estado")
-      .select("ZonaAtencionID, ZonaNombre");
-
-    if (error) {
-      console.error("❌ Error cargando estados:", error);
-      return;
+  // -----------------------------
+  // Funciones de fecha
+  // -----------------------------
+  const getFechaInicio = (periodo) => {
+    const ahora = new Date();
+    const inicio = new Date(ahora);
+    
+    switch (periodo) {
+      case 'dia':
+        inicio.setHours(0, 0, 0, 0);
+        break;
+      case 'semana':
+        inicio.setDate(inicio.getDate() - 7);
+        inicio.setHours(0, 0, 0, 0);
+        break;
+      case 'mes':
+        inicio.setMonth(inicio.getMonth() - 1);
+        inicio.setHours(0, 0, 0, 0);
+        break;
+      case 'todo':
+      default:
+        return null;
     }
-
-    const map = {};
-    data.forEach((e) => {
-      map[e.ZonaAtencionID] = e.ZonaNombre;
-    });
-
-    setEstadoMap(map);
+    return inicio;
   };
 
-  // --------------------------------------------------
-  // 👨‍⚕️ Cargar doctores
-  // --------------------------------------------------
-  const loadDoctores = async () => {
-    const { data, error } = await supa
-      .from("user")
-      .select("cedula, nombre");
-
-    if (error) {
-      console.error("❌ Error cargando doctores:", error);
-      return;
+  // -----------------------------
+  // 👤 Obtener usuario
+  // -----------------------------
+  const getUserFromStorage = async () => {
+    try {
+      const session = await AsyncStorage.getItem("userSession");
+      if (session) {
+        const user = JSON.parse(session);
+        setUserData(user);
+        return user;
+      }
+      return null;
+    } catch (error) {
+      console.error("Error obteniendo usuario:", error);
+      return null;
     }
-
-    const map = {};
-    data.forEach((u) => {
-      map[u.cedula] = u.nombre;
-    });
-
-    setDoctorMap(map);
   };
 
-  // --------------------------------------------------
-  // 📥 Cargar reportes
-  // --------------------------------------------------
-  const fetchReports = async () => {
-    const { data, error } = await supa
-      .from("medicalReport")
-      .select(`
+  // -----------------------------
+  // 📦 Obtener empresaID
+  // -----------------------------
+  const getEmpresaIdFromUser = async (user) => {
+    if (!user || !user.empresaID) return null;
+    return user.empresaID;
+  };
+
+  // -----------------------------
+  // 📥 Cargar productos
+  // -----------------------------
+  const loadProducts = async (empId) => {
+    try {
+      const { data, error } = await supa
+        .from("product")
+        .select("id, nombre")
+        .eq("empresaID", empId);
+
+      if (error) throw error;
+
+      const productMap = {};
+      const productList = [];
+      
+      data.forEach((product) => {
+        productMap[product.id] = product.nombre;
+        productList.push({ id: product.id, nombre: product.nombre });
+      });
+      
+      setProducts(productMap);
+      setProductsList(productList);
+    } catch (error) {
+      console.error("Error cargando productos:", error);
+    }
+  };
+
+  // -----------------------------
+  // 📥 Cargar movimientos
+  // -----------------------------
+  const loadMovements = async (empId) => {
+    try {
+      const { data, error } = await supa
+        .from("productMovement")
+        .select("*")
+        .eq("empresaID", empId)
+        .order("fecha", { ascending: false });
+
+      if (error) throw error;
+      return data || [];
+    } catch (error) {
+      console.error("Error cargando movimientos:", error);
+      return [];
+    }
+  };
+
+  // -----------------------------
+  // 📊 Procesar estadísticas
+  // -----------------------------
+  const processStatistics = useCallback(() => {
+    const fechaInicio = getFechaInicio(selectedPeriodo);
+    
+    // Filtrar movimientos del período
+    const movimientosPeriodo = fechaInicio 
+      ? movements.filter(m => new Date(m.fecha) >= fechaInicio)
+      : movements;
+    
+    // Calcular totales
+    let totalVentas = 0;
+    let ingresosUSD = 0;
+    let ingresosVESDebito = 0;
+    let ingresosVESEfectivo = 0;
+    
+    // Calcular ventas por producto
+    const ventasPorProducto = {};
+    
+    movimientosPeriodo.forEach(m => {
+      if (m.tipoMovimiento === 'salida') {
+        totalVentas++;
+        ingresosUSD += m.precioVentaUSD || 0;
+        ingresosVESDebito += m.precioVentaVES || 0;
+        ingresosVESEfectivo += m.precioVentaVESEfectivo || 0;
+        
+        // Acumular ventas por producto
+        const prodId = m.productoID;
+        if (!ventasPorProducto[prodId]) {
+          ventasPorProducto[prodId] = {
+            cantidad: 0,
+            nombre: products[prodId] || "Producto desconocido"
+          };
+        }
+        ventasPorProducto[prodId].cantidad += m.cantidad;
+      }
+    });
+    
+    setStats({
+      totalVentas,
+      ingresosUSD,
+      ingresosVESDebito,
+      ingresosVESEfectivo,
+    });
+    
+    // Top 30 productos más vendidos
+    const top = Object.entries(ventasPorProducto)
+      .map(([id, data]) => ({
         id,
-        estado,
-        medico,
-        CIDoctor,
-        fecha,
-        proveedor
-      `)
-      .order("id", { ascending: false })
-      .range(0, 999);
+        nombre: data.nombre,
+        cantidad: data.cantidad,
+      }))
+      .sort((a, b) => b.cantidad - a.cantidad)
+      .slice(0, 30);
+    
+    setTopProducts(top);
+    
+    // Procesar datos para gráficos
+    processChartData(movimientosPeriodo);
+    
+  }, [movements, selectedPeriodo, products]);
 
-    if (error) {
-      console.error("❌ Error cargando reportes:", error);
+  // -----------------------------
+  // 📊 Procesar datos para gráficos
+  // -----------------------------
+  const processChartData = (movementsData) => {
+    const salidas = movementsData.filter(m => m.tipoMovimiento === 'salida');
+    
+    if (salidas.length === 0) {
+      setChartDataUSD(null);
+      setChartDataVES(null);
       return;
     }
 
-    setReports(data || []);
+    const groupedByDate = {};
+    
+    salidas.forEach(m => {
+      const date = new Date(m.fecha);
+      const dateKey = `${date.getDate()}/${date.getMonth() + 1}`;
+      
+      if (!groupedByDate[dateKey]) {
+        groupedByDate[dateKey] = { usd: 0, ves: 0 };
+      }
+      
+      groupedByDate[dateKey].usd += m.precioVentaUSD || 0;
+      groupedByDate[dateKey].ves += (m.precioVentaVES || 0) + (m.precioVentaVESEfectivo || 0);
+    });
+
+    const dates = Object.keys(groupedByDate).sort((a, b) => {
+      const [dayA, monthA] = a.split('/');
+      const [dayB, monthB] = b.split('/');
+      return new Date(2024, monthA - 1, dayA) - new Date(2024, monthB - 1, dayB);
+    });
+
+    const usdData = dates.map(date => groupedByDate[date].usd);
+    const vesData = dates.map(date => groupedByDate[date].ves);
+
+    const lastDates = dates.slice(-10);
+    const lastUSD = usdData.slice(-10);
+    const lastVES = vesData.slice(-10);
+
+    if (lastUSD.some(v => v > 0)) {
+      setChartDataUSD({
+        labels: lastDates,
+        datasets: [{
+          data: lastUSD,
+          color: (opacity = 1) => `rgba(5, 150, 105, ${opacity})`,
+          strokeWidth: 2,
+        }],
+      });
+    }
+
+    if (lastVES.some(v => v > 0)) {
+      setChartDataVES({
+        labels: lastDates,
+        datasets: [{
+          data: lastVES,
+          color: (opacity = 1) => `rgba(69, 192, 232, ${opacity})`,
+          strokeWidth: 2,
+        }],
+      });
+    }
   };
 
-  // --------------------------------------------------
-  // 🔄 Cargar todo al iniciar
-  // --------------------------------------------------
+  // -----------------------------
+  // 🔄 Cargar datos
+  // -----------------------------
+  const loadAllData = async () => {
+    setLoading(true);
+    try {
+      const user = await getUserFromStorage();
+      if (!user) {
+        navigation.navigate("Log_in");
+        return;
+      }
+
+      const empId = await getEmpresaIdFromUser(user);
+      setEmpresaId(empId);
+      
+      await loadProducts(empId);
+      const movementsData = await loadMovements(empId);
+      
+      setMovements(movementsData);
+      
+    } catch (error) {
+      console.error("Error:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
-    loadEstados();
-    loadDoctores();
-    fetchReports();
+    loadAllData();
   }, []);
 
-  // --------------------------------------------------
-  // 🔍 Reaplicar filtro
-  // --------------------------------------------------
   useEffect(() => {
-    if (reports.length > 0) applyFilter();
-  }, [filter, reports]);
+    if (movements.length > 0 && Object.keys(products).length > 0) {
+      processStatistics();
+    }
+  }, [movements, selectedPeriodo, products]);
 
-  const applyFilter = () => {
-    const { inicio, fin } = getDateRange(filter);
-
-    const filtrados = reports.filter((r) => {
-      if (!r.fecha) return false;
-      const f = parseFecha(r.fecha);
-      if (!f) return false;
-      if (!inicio) return true;
-      return f >= inicio && f <= fin;
-    });
-
-    setFilteredReports(filtrados);
-    procesarEstadisticas(filtrados);
+  const formatCurrency = (amount, currency) => {
+    if (currency === 'USD') {
+      return `$${amount.toFixed(2)}`;
+    } else {
+      return `Bs. ${amount.toFixed(2)}`;
+    }
   };
 
-  // --------------------------------------------------
-  // 📊 Procesar estadísticas
-  // --------------------------------------------------
-  const procesarEstadisticas = (data) => {
-    const estados = {};
-    const doctores = {};
-    const dias = {};
-    const proveedores = {};
-
-    data.forEach((r) => {
-      // ---------- ESTADOS ----------
-      let estadoRaw = r.estado;
-
-      const idEncontrado = Object.keys(estadoMap).find(
-        (key) =>
-          estadoMap[key]?.toLowerCase() === estadoRaw?.toLowerCase()
-      );
-
-      let estadoNombre =
-        estadoMap[estadoRaw] ||
-        estadoMap[idEncontrado] ||
-        estadoRaw ||
-        "Estado desconocido";
-
-      estados[estadoNombre] = (estados[estadoNombre] || 0) + 1;
-
-      // ---------- DOCTORES ----------
-      let doctorNombre = r.medico || doctorMap[r.CIDoctor] || "Desconocido";
-      doctores[doctorNombre] = (doctores[doctorNombre] || 0) + 1;
-
-      // ---------- DIAS ----------
-      if (r.fecha) {
-        dias[r.fecha] = (dias[r.fecha] || 0) + 1;
-      }
-
-      // ---------- PROVEEDOR ----------
-      if (r.proveedor) {
-        proveedores[r.proveedor] = (proveedores[r.proveedor] || 0) + 1;
-      }
-    });
-
-    const orderedDias = Object.keys(dias)
-      .sort((a, b) => parseFecha(b) - parseFecha(a))
-      .reduce((obj, key) => {
-        obj[key] = dias[key];
-        return obj;
-      }, {});
-
-    setStatsEstados(estados);
-    setStatsDoctores(doctores);
-    setStatsDias(orderedDias);
-    setStatsProveedores(proveedores);
-  };
-
-  // --------------------------------------------------
-  // 🔘 Botón filtro
-  // --------------------------------------------------
-  const FiltroBoton = ({ label, value }) => (
+  const PeriodoBoton = ({ periodo, label, icon }) => (
     <TouchableOpacity
-      onPress={() => setFilter(value)}
       style={[
-        styles.filterButton,
-        filter === value && styles.filterButtonActive,
+        styles.periodoBoton,
+        selectedPeriodo === periodo && styles.periodoBotonActive
       ]}
+      onPress={() => setSelectedPeriodo(periodo)}
     >
-      <Text
-        style={[
-          styles.filterText,
-          filter === value && { color: "white", fontWeight: "bold" },
-        ]}
-      >
+      <MaterialCommunityIcons 
+        name={icon} 
+        size={16} 
+        color={selectedPeriodo === periodo ? "white" : "#64748b"} 
+      />
+      <Text style={[
+        styles.periodoBotonText,
+        selectedPeriodo === periodo && styles.periodoBotonTextActive
+      ]}>
         {label}
       </Text>
     </TouchableOpacity>
   );
 
-  // --------------------------------------------------
-  // 🖼️ Render
-  // --------------------------------------------------
+  const StatCard = ({ title, value, icon, color }) => (
+    <View style={[styles.statCard, { borderLeftColor: color }]}>
+      <MaterialCommunityIcons name={icon} size={24} color={color} />
+      <View style={styles.statCardContent}>
+        <Text style={styles.statCardValue}>{value}</Text>
+        <Text style={styles.statCardTitle}>{title}</Text>
+      </View>
+    </View>
+  );
+
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.safeArea}>
+        <StatusBar barStyle="dark-content" backgroundColor={"#45c0e8"} />
+        <NavBar />
+        <View style={[styles.container, styles.centerContent]}>
+          <ActivityIndicator size="large" color="#45c0e8" />
+          <Text style={styles.loadingText}>Cargando estadísticas...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView style={styles.safeArea}>
-      <StatusBar barStyle="dark-content" />
+      <StatusBar barStyle="dark-content" backgroundColor={"#45c0e8"} />
       <NavBar />
+      
+      <View style={styles.container}>
+        <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
+          
+          {/* Header */}
+          <LinearGradient colors={['#45c0e8', '#3aa5c9']} style={styles.header}>
+            <Text style={styles.headerTitle}>Estadísticas</Text>
+          </LinearGradient>
 
-      <ScrollView
-        style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-      >
-        <Text style={styles.title}>
-          Total de casos: {filteredReports.length}
-        </Text>
+          {/* Filtros de período */}
+          <View style={styles.periodoContainer}>
+            <Text style={styles.filterTitle}>Período:</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+              <PeriodoBoton periodo="dia" label="Hoy" icon="calendar-today" />
+              <PeriodoBoton periodo="semana" label="7 días" icon="calendar-week" />
+              <PeriodoBoton periodo="mes" label="30 días" icon="calendar-month" />
+              <PeriodoBoton periodo="todo" label="Todo" icon="calendar-blank" />
+            </ScrollView>
+          </View>
 
-        <View style={styles.filterRow}>
-          <FiltroBoton label="Hoy" value="hoy" />
-          <FiltroBoton label="Ayer" value="ayer" />
-          <FiltroBoton label="Semana" value="semana" />
-          <FiltroBoton label="Mes" value="mes" />
-          <FiltroBoton label="90 días" value="90dias" />
-        </View>
+          {/* Tarjetas de estadísticas */}
+          <View style={styles.statsGrid}>
+            <StatCard
+              title="Ventas totales"
+              value={stats.totalVentas.toString()}
+              icon="cart"
+              color="#45c0e8"
+            />
+            <StatCard
+              title="Ingresos USD"
+              value={formatCurrency(stats.ingresosUSD, 'USD')}
+              icon="currency-usd"
+              color="#059669"
+            />
+            <StatCard
+              title="Ingresos VES (Débito)"
+              value={formatCurrency(stats.ingresosVESDebito, 'VES')}
+              icon="credit-card"
+              color="#3498db"
+            />
+            <StatCard
+              title="Ingresos VES (Efectivo)"
+              value={formatCurrency(stats.ingresosVESEfectivo, 'VES')}
+              icon="cash"
+              color="#f39c12"
+            />
+          </View>
 
-        {/* Casos por Estado */}
-        <Card style={styles.card}>
-          <Card.Title title="Casos por Estado" />
-          <Card.Content>
-            {Object.entries(statsEstados).map(([estado, total]) => (
-              <Text key={estado} style={styles.item}>
-                {estado}: {total}
-              </Text>
-            ))}
-          </Card.Content>
-        </Card>
+          {/* Gráfico USD */}
+          {chartDataUSD && (
+            <View style={styles.chartCard}>
+              <View style={styles.chartHeader}>
+                <MaterialCommunityIcons name="currency-usd" size={20} color="#059669" />
+                <Text style={styles.chartTitle}>Evolución de ingresos en USD</Text>
+              </View>
+              <LineChart
+                data={chartDataUSD}
+                width={width - 64}
+                height={200}
+                chartConfig={{
+                  backgroundColor: '#ffffff',
+                  backgroundGradientFrom: '#ffffff',
+                  backgroundGradientTo: '#ffffff',
+                  decimalPlaces: 2,
+                  color: (opacity = 1) => `rgba(5, 150, 105, ${opacity})`,
+                  labelColor: (opacity = 1) => `rgba(100, 116, 139, ${opacity})`,
+                  style: { borderRadius: 16 },
+                  propsForDots: { r: '4', strokeWidth: '2', stroke: '#059669' },
+                  formatYLabel: (value) => `$${parseFloat(value).toFixed(0)}`,
+                }}
+                bezier
+                style={styles.chart}
+              />
+            </View>
+          )}
 
-        {/* Casos por Doctor */}
-        <Card style={styles.card}>
-          <Card.Title title="Casos por Doctor" />
-          <Card.Content>
-            {Object.entries(statsDoctores).map(([doc, total]) => (
-              <Text key={doc} style={styles.item}>
-                {doc}: {total}
-              </Text>
-            ))}
-          </Card.Content>
-        </Card>
+          {/* Gráfico VES */}
+          {chartDataVES && (
+            <View style={styles.chartCard}>
+              <View style={styles.chartHeader}>
+                <MaterialCommunityIcons name="currency-btc" size={20} color="#45c0e8" />
+                <Text style={styles.chartTitle}>Evolución de ingresos en VES</Text>
+              </View>
+              <LineChart
+                data={chartDataVES}
+                width={width - 64}
+                height={200}
+                chartConfig={{
+                  backgroundColor: '#ffffff',
+                  backgroundGradientFrom: '#ffffff',
+                  backgroundGradientTo: '#ffffff',
+                  decimalPlaces: 0,
+                  color: (opacity = 1) => `rgba(69, 192, 232, ${opacity})`,
+                  labelColor: (opacity = 1) => `rgba(100, 116, 139, ${opacity})`,
+                  style: { borderRadius: 16 },
+                  propsForDots: { r: '4', strokeWidth: '2', stroke: '#45c0e8' },
+                  formatYLabel: (value) => `Bs.${parseFloat(value).toFixed(0)}`,
+                }}
+                bezier
+                style={styles.chart}
+              />
+            </View>
+          )}
 
-        {/* Casos por Proveedor */}
-        <Card style={styles.card}>
-          <Card.Title title="Casos por Proveedor" />
-          <Card.Content>
-            {Object.entries(statsProveedores).length === 0 ? (
-              <Text style={styles.item}>No hay datos</Text>
-            ) : (
-              Object.entries(statsProveedores).map(([prov, total]) => (
-                <Text key={prov} style={styles.item}>
-                  {prov}: {total}
-                </Text>
+          {/* Top 30 productos más vendidos */}
+          <View style={styles.topProductsContainer}>
+            <Text style={styles.sectionTitle}>🏆 Top 30 productos más vendidos</Text>
+            
+            {topProducts.length > 0 ? (
+              topProducts.map((product, index) => (
+                <View key={product.id} style={styles.productRankItem}>
+                  <View style={styles.rankContainer}>
+                    <Text style={[
+                      styles.rankText,
+                      index === 0 && styles.rankGold,
+                      index === 1 && styles.rankSilver,
+                      index === 2 && styles.rankBronze,
+                    ]}>
+                      #{index + 1}
+                    </Text>
+                  </View>
+                  <View style={styles.productRankInfo}>
+                    <Text style={styles.productRankName} numberOfLines={1}>
+                      {product.nombre}
+                    </Text>
+                    <Text style={styles.productRankQuantity}>
+                      {product.cantidad} unidades vendidas
+                    </Text>
+                  </View>
+                  <View style={styles.productRankBar}>
+                    <View 
+                      style={[
+                        styles.productRankBarFill,
+                        { width: `${Math.min((product.cantidad / topProducts[0]?.cantidad) * 100, 100)}%` }
+                      ]} 
+                    />
+                  </View>
+                </View>
               ))
+            ) : (
+              <View style={styles.emptyContainer}>
+                <MaterialCommunityIcons name="chart-bar" size={50} color="#cbd5e1" />
+                <Text style={styles.emptyText}>No hay datos de ventas en este período</Text>
+              </View>
             )}
-          </Card.Content>
-        </Card>
+          </View>
 
-        {/* Casos por Día */}
-        <Card style={styles.card}>
-          <Card.Title title="Casos por Día" />
-          <Card.Content>
-            {Object.entries(statsDias).map(([fecha, total]) => (
-              <Text key={fecha} style={styles.item}>
-                {fecha}: {total}
-              </Text>
-            ))}
-          </Card.Content>
-        </Card>
-
-        <View style={styles.bottomSpace} />
-      </ScrollView>
+          <View style={styles.bottomSpace} />
+        </ScrollView>
+      </View>
     </SafeAreaView>
   );
 };
 
-// --------------------------------------------------
-// 🎨 Estilos
-// --------------------------------------------------
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
+    backgroundColor: '#45c0e8',
+  },
+  container: {
+    flex: 1,
     backgroundColor: "#f5f5f5",
+  },
+  centerContent: {
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingText: {
+    marginTop: 12,
+    fontSize: 16,
+    color: '#64748b',
   },
   scrollView: {
     flex: 1,
   },
   scrollContent: {
-    padding: 16,
+    paddingBottom: 30,
   },
-  title: {
+  header: {
+    padding: 20,
+    borderBottomLeftRadius: 30,
+    borderBottomRightRadius: 30,
+    marginBottom: 16,
+  },
+  headerTitle: {
     fontSize: 24,
-    fontWeight: "bold",
-    marginBottom: 15,
-    color: "#333",
+    fontWeight: 'bold',
+    color: 'white',
   },
-  card: {
-    marginBottom: 15,
-    borderRadius: 14,
-    elevation: 2,
+  periodoContainer: {
+    backgroundColor: 'white',
+    marginHorizontal: 16,
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 16,
   },
-  item: {
-    fontSize: 16,
-    marginVertical: 3,
-    color: "#444",
-  },
-  filterRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    justifyContent: "center",
-    marginBottom: 15,
-  },
-  filterButton: {
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    backgroundColor: "#f0f0f0",
-    borderRadius: 20,
-    marginRight: 6,
+  filterTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#1e293b',
     marginBottom: 8,
   },
-  filterButtonActive: {
-    backgroundColor: "#4A90E2",
+  periodoBoton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f1f5f9',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 20,
+    marginRight: 8,
+    gap: 6,
   },
-  filterText: {
-    color: "#555",
-    fontWeight: "600",
+  periodoBotonActive: {
+    backgroundColor: '#45c0e8',
+  },
+  periodoBotonText: {
+    fontSize: 13,
+    color: '#64748b',
+    fontWeight: '500',
+  },
+  periodoBotonTextActive: {
+    color: 'white',
+  },
+  statsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    marginBottom: 16,
+    gap: 12,
+  },
+  statCard: {
+    backgroundColor: 'white',
+    borderRadius: 12,
+    padding: 16,
+    width: '48%',
+    borderLeftWidth: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  statCardContent: {
+    flex: 1,
+  },
+  statCardValue: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#1e293b',
+  },
+  statCardTitle: {
+    fontSize: 11,
+    color: '#64748b',
+    marginTop: 2,
+  },
+  chartCard: {
+    backgroundColor: 'white',
+    marginHorizontal: 16,
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  chartHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+    gap: 8,
+  },
+  chartTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#1e293b',
+  },
+  chart: {
+    marginVertical: 8,
+    borderRadius: 16,
+  },
+  topProductsContainer: {
+    backgroundColor: 'white',
+    marginHorizontal: 16,
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1e293b',
+    marginBottom: 16,
+  },
+  productRankItem: {
+    marginBottom: 12,
+  },
+  rankContainer: {
+    marginBottom: 4,
+  },
+  rankText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#64748b',
+  },
+  rankGold: {
+    color: '#f39c12',
+  },
+  rankSilver: {
+    color: '#95a5a6',
+  },
+  rankBronze: {
+    color: '#cd7f32',
+  },
+  productRankInfo: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 4,
+  },
+  productRankName: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#1e293b',
+    flex: 1,
+    marginRight: 8,
+  },
+  productRankQuantity: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#45c0e8',
+  },
+  productRankBar: {
+    height: 6,
+    backgroundColor: '#e2e8f0',
+    borderRadius: 3,
+    overflow: 'hidden',
+  },
+  productRankBarFill: {
+    height: '100%',
+    backgroundColor: '#45c0e8',
+    borderRadius: 3,
+  },
+  emptyContainer: {
+    alignItems: 'center',
+    paddingVertical: 40,
+  },
+  emptyText: {
+    fontSize: 14,
+    color: '#94a3b8',
+    marginTop: 12,
+    textAlign: 'center',
   },
   bottomSpace: {
     height: 20,

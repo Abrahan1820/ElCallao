@@ -16,22 +16,18 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useNavigation } from "@react-navigation/native";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 
-const AdminProvider = () => {
+const AdminCategory = () => {
   const supa = SupaClient();
   const navigation = useNavigation();
 
   // Estados para los campos del formulario
-  const [proveedorID, setProveedorID] = useState("");
   const [nombre, setNombre] = useState("");
-  const [contacto, setContacto] = useState("");
-  const [telefono, setTelefono] = useState("");
-  const [direccion, setDireccion] = useState("");
+  const [descripcion, setDescripcion] = useState("");
   const [editando, setEditando] = useState(null);
-  const [proveedores, setProveedores] = useState([]);
-  const [filtro, setFiltro] = useState("todos");
+  const [categorias, setCategorias] = useState([]);
+  const [filtro, setFiltro] = useState("todas");
   const [busqueda, setBusqueda] = useState("");
   const [loading, setLoading] = useState(false);
-  const [empresaID, setEmpresaID] = useState("");
 
   // Verificar acceso de administrador
   useEffect(() => {
@@ -40,7 +36,7 @@ const AdminProvider = () => {
         const session = await AsyncStorage.getItem("userSession");
         const user = session ? JSON.parse(session) : null;
 
-        if (!user || !user.esActivo ) {
+        if (!user || !user.esActivo) {
           await AsyncStorage.removeItem("userSession");
           Toast.show({
             type: "error",
@@ -52,7 +48,7 @@ const AdminProvider = () => {
           navigation.navigate("Log_in");
           return;
         }
-        setEmpresaID(user.empresaID);
+
         if (!user.esAdministrador) {
           navigation.navigate("PaginaPrincipal");
           return;
@@ -95,21 +91,21 @@ const AdminProvider = () => {
     verificarAcceso();
   }, []);
 
-  // Cargar proveedores al iniciar y cuando cambia el filtro
+  // Cargar categorías al iniciar y cuando cambia el filtro
   useEffect(() => {
-    obtenerProveedores();
+    obtenerCategorias();
   }, [filtro]);
 
-  const obtenerProveedores = async () => {
+  const obtenerCategorias = async () => {
     setLoading(true);
     try {
       let query = supa
-        .from("provider")
+        .from("productCategory")
         .select("*")
         .order("nombre", { ascending: true });
 
-      if (filtro === "activos") query = query.eq("esActivo", true);
-      if (filtro === "inactivos") query = query.eq("esActivo", false);
+      if (filtro === "activas") query = query.eq("esActivo", true);
+      if (filtro === "inactivas") query = query.eq("esActivo", false);
 
       const { data, error } = await query;
       if (error) throw error;
@@ -120,21 +116,19 @@ const AdminProvider = () => {
       if (busqueda.trim()) {
         const lower = busqueda.toLowerCase();
         resultados = resultados.filter(
-          (p) =>
-            p.nombre?.toLowerCase().includes(lower) ||
-            p.proveedorID?.toLowerCase().includes(lower) ||
-            p.contacto?.toLowerCase().includes(lower) ||
-            p.telefono?.includes(lower)
+          (c) =>
+            c.nombre?.toLowerCase().includes(lower) ||
+            c.descripcion?.toLowerCase().includes(lower)
         );
       }
 
-      setProveedores(resultados);
+      setCategorias(resultados);
     } catch (error) {
-      console.error("Error obteniendo proveedores:", error);
+      console.error("Error obteniendo categorías:", error);
       Toast.show({
         type: "error",
         text1: "Error",
-        text2: "No se pudieron obtener los proveedores",
+        text2: "No se pudieron obtener las categorías",
         position: "top",
         visibilityTime: 3000,
       });
@@ -144,32 +138,18 @@ const AdminProvider = () => {
   };
 
   const limpiarFormulario = () => {
-    setProveedorID("");
     setNombre("");
-    setContacto("");
-    setTelefono("");
-    setDireccion("");
+    setDescripcion("");
     setEditando(null);
   };
 
-  const guardarProveedor = async () => {
+  const guardarCategoria = async () => {
     // Validaciones
-    if (!proveedorID.trim()) {
-      Toast.show({
-        type: "error",
-        text1: "Error",
-        text2: "El ID del proveedor es obligatorio",
-        position: "top",
-        visibilityTime: 3000,
-      });
-      return;
-    }
-
     if (!nombre.trim()) {
       Toast.show({
         type: "error",
         text1: "Error",
-        text2: "El nombre de la empresa es obligatorio",
+        text2: "El nombre de la categoría es obligatorio",
         position: "top",
         visibilityTime: 3000,
       });
@@ -178,15 +158,12 @@ const AdminProvider = () => {
 
     try {
       if (editando) {
-        // Actualizar proveedor existente
+        // Actualizar categoría existente
         const { error } = await supa
-          .from("provider")
+          .from("productCategory")
           .update({
-            proveedorID,
             nombre,
-            contacto,
-            telefono,
-            direccion,
+            descripcion,
           })
           .eq("id", editando.id);
 
@@ -195,19 +172,19 @@ const AdminProvider = () => {
         Toast.show({
           type: "success",
           text1: "Éxito",
-          text2: "Proveedor actualizado correctamente",
+          text2: "Categoría actualizada correctamente",
           position: "top",
           visibilityTime: 3000,
         });
       } else {
-        // Verificar si ya existe un proveedor con ese ID
+        // Verificar si ya existe una categoría con ese nombre
         const { data: existe, error: checkError } = await supa
-          .from("provider")
-          .select("proveedorID")
-          .eq("proveedorID", proveedorID)
-          .single();
+          .from("productCategory")
+          .select("nombre")
+          .eq("nombre", nombre)
+          .maybeSingle();
 
-        if (checkError && checkError.code !== "PGRST116") { // PGRST116 es "no se encontró"
+        if (checkError && checkError.code !== "PGRST116") {
           throw checkError;
         }
 
@@ -215,23 +192,19 @@ const AdminProvider = () => {
           Toast.show({
             type: "error",
             text1: "Error",
-            text2: "Ya existe un proveedor con ese ID",
+            text2: "Ya existe una categoría con ese nombre",
             position: "top",
             visibilityTime: 3000,
           });
           return;
         }
 
-        // Crear nuevo proveedor
+        // Crear nueva categoría
         const { error } = await supa
-          .from("provider")
+          .from("productCategory")
           .insert([{
-            proveedorID,
             nombre,
-            contacto,
-            telefono,
-            direccion,
-            empresaID,
+            descripcion: descripcion || null,
             esActivo: true,
           }]);
 
@@ -240,39 +213,49 @@ const AdminProvider = () => {
         Toast.show({
           type: "success",
           text1: "Éxito",
-          text2: "Proveedor creado correctamente",
+          text2: "Categoría creada correctamente",
           position: "top",
           visibilityTime: 3000,
         });
       }
 
       limpiarFormulario();
-      obtenerProveedores();
+      obtenerCategorias();
     } catch (error) {
-      console.error("Error guardando proveedor:", error);
+      console.error("Error guardando categoría:", error);
       Toast.show({
         type: "error",
         text1: "Error",
-        text2: "No se pudo guardar el proveedor",
+        text2: "No se pudo guardar la categoría",
         position: "top",
         visibilityTime: 3000,
       });
     }
   };
 
-  const editarProveedor = (p) => {
-    setEditando(p);
-    setProveedorID(p.proveedorID);
-    setNombre(p.nombre);
-    setContacto(p.contacto || "");
-    setTelefono(p.telefono || "");
-    setDireccion(p.direccion || "");
+  const editarCategoria = (c) => {
+    if (!c) return;
+    
+    setEditando(c);
+    setNombre(c.nombre || "");
+    setDescripcion(c.descripcion || "");
   };
 
-  const cambiarEstadoProveedor = async (id, nuevoEstado) => {
+  const cambiarEstadoCategoria = async (id, nuevoEstado) => {
+    if (!id) {
+      Toast.show({
+        type: "error",
+        text1: "Error",
+        text2: "ID de categoría no válido",
+        position: "top",
+        visibilityTime: 3000,
+      });
+      return;
+    }
+
     Alert.alert(
-      nuevoEstado ? "Activar proveedor" : "Desactivar proveedor",
-      `¿Estás seguro de ${nuevoEstado ? "activar" : "desactivar"} este proveedor?`,
+      nuevoEstado ? "Activar categoría" : "Desactivar categoría",
+      `¿Estás seguro de ${nuevoEstado ? "activar" : "desactivar"} esta categoría?`,
       [
         { text: "Cancelar", style: "cancel" },
         {
@@ -280,27 +263,27 @@ const AdminProvider = () => {
           onPress: async () => {
             try {
               const { error } = await supa
-                .from("provider")
+                .from("productCategory")
                 .update({ esActivo: nuevoEstado })
-                .eq("proveedorID", id);
+                .eq("id", id);
 
               if (error) throw error;
 
               Toast.show({
                 type: "success",
-                text1: nuevoEstado ? "Proveedor activado" : "Proveedor desactivado",
-                text2: `El proveedor ha sido ${nuevoEstado ? "activado" : "desactivado"} correctamente`,
+                text1: nuevoEstado ? "Categoría activada" : "Categoría desactivada",
+                text2: `La categoría ha sido ${nuevoEstado ? "activada" : "desactivada"} correctamente`,
                 position: "top",
                 visibilityTime: 3000,
               });
 
-              obtenerProveedores();
+              obtenerCategorias();
             } catch (error) {
               console.error("Error cambiando estado:", error);
               Toast.show({
                 type: "error",
                 text1: "Error",
-                text2: `No se pudo ${nuevoEstado ? "activar" : "desactivar"} el proveedor`,
+                text2: `No se pudo ${nuevoEstado ? "activar" : "desactivar"} la categoría`,
                 position: "top",
                 visibilityTime: 3000,
               });
@@ -330,88 +313,73 @@ const AdminProvider = () => {
     </TouchableOpacity>
   );
 
-  const renderProveedor = ({ item }) => (
-    <View style={[styles.item, !item.esActivo && styles.itemInactivo]}>
-      <View style={styles.itemHeader}>
-        <Text style={styles.itemNombre}>{item.nombre}</Text>
-        <View style={[styles.estadoBadge, item.esActivo ? styles.estadoActivo : styles.estadoInactivo]}>
-          <Text style={styles.estadoTexto}>{item.esActivo ? "ACTIVO" : "INACTIVO"}</Text>
+  const renderCategoria = ({ item }) => {
+    if (!item) return null;
+    
+    return (
+      <View style={[styles.item, !item.esActivo && styles.itemInactivo]}>
+        <View style={styles.itemHeader}>
+          <View style={styles.tituloContainer}>
+            <Text style={styles.itemNombre}>{item.nombre || "Sin nombre"}</Text>
+            {item.descripcion ? (
+              <Text style={styles.itemDescripcion} numberOfLines={2}>
+                {item.descripcion}
+              </Text>
+            ) : null}
+          </View>
+          <View style={[styles.estadoBadge, item.esActivo ? styles.estadoActivo : styles.estadoInactivo]}>
+            <Text style={[styles.estadoTexto, item.esActivo ? styles.textoActivo : styles.textoInactivo]}>
+              {item.esActivo ? "ACTIVA" : "INACTIVA"}
+            </Text>
+          </View>
+        </View>
+
+        <View style={styles.itemFooter}>
+          <Text style={styles.itemId}>ID: {item.id}</Text>
+
+          <View style={styles.actions}>
+            <TouchableOpacity
+              style={[styles.actionButton, styles.editButton]}
+              onPress={() => item?.id && editarCategoria(item)}
+            >
+              <MaterialCommunityIcons name="pencil" size={14} color="white" />
+              <Text style={styles.actionText}>EDITAR</Text>
+            </TouchableOpacity>
+
+            {item.esActivo ? (
+              <TouchableOpacity
+                style={[styles.actionButton, styles.deactivateButton]}
+                onPress={() => item?.id && cambiarEstadoCategoria(item.id, false)}
+              >
+                <MaterialCommunityIcons name="close" size={14} color="white" />
+                <Text style={styles.actionText}>DESACTIVAR</Text>
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity
+                style={[styles.actionButton, styles.activateButton]}
+                onPress={() => item?.id && cambiarEstadoCategoria(item.id, true)}
+              >
+                <MaterialCommunityIcons name="check" size={14} color="white" />
+                <Text style={styles.actionText}>ACTIVAR</Text>
+              </TouchableOpacity>
+            )}
+          </View>
         </View>
       </View>
-
-      <View style={styles.itemContent}>
-        <View style={styles.infoRow}>
-          <MaterialCommunityIcons name="identifier" size={16} color="#64748b" />
-          <Text style={styles.infoLabel}>ID:</Text>
-          <Text style={styles.infoValue}>{item.proveedorID}</Text>
-        </View>
-
-        {item.contacto ? (
-          <View style={styles.infoRow}>
-            <MaterialCommunityIcons name="account" size={16} color="#64748b" />
-            <Text style={styles.infoLabel}>Contacto:</Text>
-            <Text style={styles.infoValue}>{item.contacto}</Text>
-          </View>
-        ) : null}
-
-        {item.telefono ? (
-          <View style={styles.infoRow}>
-            <MaterialCommunityIcons name="phone" size={16} color="#64748b" />
-            <Text style={styles.infoLabel}>Teléfono:</Text>
-            <Text style={styles.infoValue}>{item.telefono}</Text>
-          </View>
-        ) : null}
-
-        {item.direccion ? (
-          <View style={styles.infoRow}>
-            <MaterialCommunityIcons name="map-marker" size={16} color="#64748b" />
-            <Text style={styles.infoLabel}>Dirección:</Text>
-            <Text style={styles.infoValue} numberOfLines={2}>{item.direccion}</Text>
-          </View>
-        ) : null}
-      </View>
-
-      <View style={styles.actions}>
-        <TouchableOpacity
-          style={[styles.actionButton, styles.editButton]}
-          onPress={() => editarProveedor(item)}
-        >
-          <MaterialCommunityIcons name="pencil" size={16} color="white" />
-          <Text style={styles.actionText}>EDITAR</Text>
-        </TouchableOpacity>
-
-        {item.esActivo ? (
-          <TouchableOpacity
-            style={[styles.actionButton, styles.deactivateButton]}
-            onPress={() => cambiarEstadoProveedor(item.proveedorID, false)}
-          >
-            <MaterialCommunityIcons name="close" size={16} color="white" />
-            <Text style={styles.actionText}>DESACTIVAR</Text>
-          </TouchableOpacity>
-        ) : (
-          <TouchableOpacity
-            style={[styles.actionButton, styles.activateButton]}
-            onPress={() => cambiarEstadoProveedor(item.proveedorID, true)}
-          >
-            <MaterialCommunityIcons name="check" size={16} color="white" />
-            <Text style={styles.actionText}>ACTIVAR</Text>
-          </TouchableOpacity>
-        )}
-      </View>
-    </View>
-  );
+    );
+  };
 
   return (
     <View style={styles.grande}>
       <NavBar />
       <ScrollView style={styles.container}>
-        <Text style={styles.title}>Administrar Proveedores</Text>
+        <Text style={styles.title}>Administrar Categorías</Text>
 
         {/* Filtros */}
         <View style={styles.filtrosContainer}>
-          <FiltroBoton estado="todos" label="Todos" />
-          <FiltroBoton estado="activos" label="Activos" />
-          <FiltroBoton estado="inactivos" label="Inactivos" />
+          <FiltroBoton estado="todas" label="Todas" />
+          <FiltroBoton estado="activas" label="Activas" />
+          <FiltroBoton estado="inactivas" label="Inactivas" />
         </View>
 
         {/* Búsqueda */}
@@ -419,10 +387,10 @@ const AdminProvider = () => {
           <MaterialCommunityIcons name="magnify" size={20} color="#94a3b8" />
           <TextInput
             style={styles.searchInput}
-            placeholder="Buscar por nombre, ID, contacto o teléfono"
+            placeholder="Buscar por nombre o descripción"
             value={busqueda}
             onChangeText={setBusqueda}
-            onSubmitEditing={obtenerProveedores}
+            onSubmitEditing={obtenerCategorias}
             placeholderTextColor="#94a3b8"
           />
           {busqueda.length > 0 && (
@@ -435,44 +403,21 @@ const AdminProvider = () => {
         {/* Formulario */}
         <View style={styles.formContainer}>
           <Text style={styles.formTitle}>
-            {editando ? "✏️ EDITAR PROVEEDOR" : "➕ NUEVO PROVEEDOR"}
+            {editando ? "✏️ EDITAR CATEGORÍA" : "➕ NUEVA CATEGORÍA"}
           </Text>
 
           <TextInput
             style={styles.input}
-            placeholder="ID del proveedor *"
-            value={proveedorID}
-            onChangeText={setProveedorID}
-            editable={!editando} // No permitir editar ID si ya existe
-          />
-
-          <TextInput
-            style={styles.input}
-            placeholder="Nombre de la empresa *"
+            placeholder="Nombre de la categoría *"
             value={nombre}
             onChangeText={setNombre}
           />
 
           <TextInput
-            style={styles.input}
-            placeholder="Persona de contacto"
-            value={contacto}
-            onChangeText={setContacto}
-          />
-
-          <TextInput
-            style={styles.input}
-            placeholder="Teléfono"
-            value={telefono}
-            onChangeText={setTelefono}
-            keyboardType="phone-pad"
-          />
-
-          <TextInput
             style={[styles.input, styles.textArea]}
-            placeholder="Dirección"
-            value={direccion}
-            onChangeText={setDireccion}
+            placeholder="Descripción (opcional)"
+            value={descripcion}
+            onChangeText={setDescripcion}
             multiline
             numberOfLines={3}
             textAlignVertical="top"
@@ -483,7 +428,7 @@ const AdminProvider = () => {
               style={[styles.button, styles.cancelButton]}
               onPress={limpiarFormulario}
             >
-              <Text style={styles.buttonText}>CANCELAR</Text>
+              <Text style={styles.cancelButtonText}>CANCELAR</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -491,7 +436,7 @@ const AdminProvider = () => {
                 styles.button,
                 editando ? styles.updateButton : styles.addButton,
               ]}
-              onPress={guardarProveedor}
+              onPress={guardarCategoria}
             >
               <Text style={styles.buttonText}>
                 {editando ? "ACTUALIZAR" : "GUARDAR"}
@@ -500,10 +445,10 @@ const AdminProvider = () => {
           </View>
         </View>
 
-        {/* Lista de proveedores */}
+        {/* Lista de categorías */}
         <View style={styles.listHeader}>
-          <Text style={styles.listTitle}>Lista de Proveedores</Text>
-          <Text style={styles.listCount}>{proveedores.length} registros</Text>
+          <Text style={styles.listTitle}>Lista de Categorías</Text>
+          <Text style={styles.listCount}>{categorias.length} registros</Text>
         </View>
 
         {loading ? (
@@ -512,14 +457,14 @@ const AdminProvider = () => {
           </View>
         ) : (
           <FlatList
-            data={proveedores}
-            keyExtractor={(item) => item?.proveedorID?.toString() || Math.random().toString()}
-            renderItem={renderProveedor}
+            data={categorias}
+            keyExtractor={(item) => item?.id?.toString() || Math.random().toString()}
+            renderItem={renderCategoria}
             scrollEnabled={false}
             ListEmptyComponent={
               <View style={styles.emptyContainer}>
-                <MaterialCommunityIcons name="truck-off" size={50} color="#cbd5e1" />
-                <Text style={styles.emptyText}>No hay proveedores</Text>
+                <MaterialCommunityIcons name="tag-off" size={50} color="#cbd5e1" />
+                <Text style={styles.emptyText}>No hay categorías</Text>
               </View>
             }
           />
@@ -635,9 +580,14 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   cancelButton: {
-    backgroundColor: "#e74c3c",
+    backgroundColor: "#f1f5f9",
     borderWidth: 1,
     borderColor: "#e2e8f0",
+  },
+  cancelButtonText: {
+    color: "#64748b",
+    fontWeight: "600",
+    fontSize: 14,
   },
   addButton: {
     backgroundColor: "#27ae60",
@@ -690,19 +640,28 @@ const styles = StyleSheet.create({
   itemHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "center",
     marginBottom: 12,
   },
+  tituloContainer: {
+    flex: 1,
+    marginRight: 12,
+  },
   itemNombre: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: "700",
     color: "#1e293b",
-    flex: 1,
+    marginBottom: 4,
+  },
+  itemDescripcion: {
+    fontSize: 13,
+    color: "#64748b",
+    lineHeight: 18,
   },
   estadoBadge: {
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 12,
+    alignSelf: "flex-start",
   },
   estadoActivo: {
     backgroundColor: "#e3f7e3",
@@ -713,41 +672,34 @@ const styles = StyleSheet.create({
   estadoTexto: {
     fontSize: 11,
     fontWeight: "700",
+  },
+  textoActivo: {
     color: "#27ae60",
   },
-  itemContent: {
-    marginBottom: 12,
-    gap: 6,
+  textoInactivo: {
+    color: "#e74c3c",
   },
-  infoRow: {
+  itemFooter: {
     flexDirection: "row",
+    justifyContent: "space-between",
     alignItems: "center",
-    gap: 6,
-  },
-  infoLabel: {
-    fontSize: 13,
-    color: "#64748b",
-    fontWeight: "500",
-    width: 65,
-  },
-  infoValue: {
-    flex: 1,
-    fontSize: 13,
-    color: "#1e293b",
-  },
-  actions: {
-    flexDirection: "row",
-    justifyContent: "flex-end",
-    gap: 8,
     borderTopWidth: 1,
     borderTopColor: "#e2e8f0",
     paddingTop: 12,
   },
+  itemId: {
+    fontSize: 11,
+    color: "#94a3b8",
+  },
+  actions: {
+    flexDirection: "row",
+    gap: 8,
+  },
   actionButton: {
     flexDirection: "row",
     alignItems: "center",
-    paddingVertical: 8,
-    paddingHorizontal: 12,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
     borderRadius: 6,
     gap: 4,
   },
@@ -763,7 +715,7 @@ const styles = StyleSheet.create({
   actionText: {
     color: "white",
     fontWeight: "600",
-    fontSize: 12,
+    fontSize: 11,
   },
   loadingContainer: {
     padding: 40,
@@ -782,4 +734,4 @@ const styles = StyleSheet.create({
   },
 });
 
-export default AdminProvider;
+export default AdminCategory;

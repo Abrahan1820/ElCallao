@@ -30,16 +30,44 @@ const MovementsScreen = () => {
   const [userData, setUserData] = useState(null);
   const [empresaId, setEmpresaId] = useState(null);
   
-  // Filtros (directamente en la pantalla)
+  // Filtros
   const [selectedTipo, setSelectedTipo] = useState("todos");
   const [selectedTransaccion, setSelectedTransaccion] = useState("todos");
+  const [selectedPeriodo, setSelectedPeriodo] = useState("dia");
   const [searchText, setSearchText] = useState("");
   
-  const [stats, setStats] = useState({
-    totalMovements: 0,
-    totalIngresosUSD: 0,
-    totalIngresosVES: 0,
+  // Ingreso del día
+  const [ingresoDia, setIngresoDia] = useState({
+    usd: 0,
+    vesDebito: 0,
+    vesEfectivo: 0,
   });
+
+  // -----------------------------
+  // Funciones de fecha
+  // -----------------------------
+  const getFechaInicio = (periodo) => {
+    const ahora = new Date();
+    const inicio = new Date(ahora);
+    
+    switch (periodo) {
+      case 'dia':
+        inicio.setHours(0, 0, 0, 0);
+        break;
+      case 'semana':
+        inicio.setDate(inicio.getDate() - 7);
+        inicio.setHours(0, 0, 0, 0);
+        break;
+      case 'mes':
+        inicio.setMonth(inicio.getMonth() - 1);
+        inicio.setHours(0, 0, 0, 0);
+        break;
+      case 'todo':
+      default:
+        return null;
+    }
+    return inicio;
+  };
 
   // -----------------------------
   // 👤 Obtener usuario
@@ -109,10 +137,39 @@ const MovementsScreen = () => {
   };
 
   // -----------------------------
+  // 📊 Calcular ingreso del día
+  // -----------------------------
+  const calcularIngresoDia = (movementsData) => {
+    const hoy = new Date();
+    hoy.setHours(0, 0, 0, 0);
+    
+    let usd = 0;
+    let vesDebito = 0;
+    let vesEfectivo = 0;
+    
+    movementsData.forEach(m => {
+      const fechaMov = new Date(m.fecha);
+      if (fechaMov >= hoy && m.tipoMovimiento === 'salida') {
+        usd += m.precioVentaUSD || 0;
+        vesDebito += m.precioVentaVES || 0;
+        vesEfectivo += m.precioVentaVESEfectivo || 0;
+      }
+    });
+    
+    setIngresoDia({ usd, vesDebito, vesEfectivo });
+  };
+
+  // -----------------------------
   // 🔍 Aplicar filtros
   // -----------------------------
   const applyFilters = useCallback(() => {
     let filtered = [...movements];
+
+    // Filtro por período
+    const fechaInicio = getFechaInicio(selectedPeriodo);
+    if (fechaInicio) {
+      filtered = filtered.filter(m => new Date(m.fecha) >= fechaInicio);
+    }
 
     // Filtro por tipo de movimiento
     if (selectedTipo !== "todos") {
@@ -128,7 +185,7 @@ const MovementsScreen = () => {
     if (searchText.trim() !== "") {
       const searchLower = searchText.toLowerCase();
       filtered = filtered.filter(m => {
-        const productName = products[m.productID] || "";
+        const productName = products[m.productoID] || "";
         return productName.toLowerCase().includes(searchLower) ||
                m.observaciones?.toLowerCase().includes(searchLower);
       });
@@ -136,25 +193,7 @@ const MovementsScreen = () => {
 
     setFilteredMovements(filtered);
     
-    // Calcular ingresos
-    let totalUSD = 0;
-    let totalVES = 0;
-    filtered.forEach(m => {
-      if (m.tipoMovimiento === 'salida') {
-        if (m.tipoTransaccion === 'Efectivo USD' || m.tipoTransaccion === 'USD') {
-          totalUSD += m.precioVentaUSD * m.cantidad;
-        } else {
-          totalVES += m.precioVentaVES * m.cantidad;
-        }
-      }
-    });
-    
-    setStats({
-      totalMovements: filtered.length,
-      totalIngresosUSD: totalUSD,
-      totalIngresosVES: totalVES,
-    });
-  }, [movements, selectedTipo, selectedTransaccion, searchText, products]);
+  }, [movements, selectedTipo, selectedTransaccion, selectedPeriodo, searchText, products]);
 
   // -----------------------------
   // 🔄 Cargar datos
@@ -176,6 +215,7 @@ const MovementsScreen = () => {
       
       setMovements(movementsData);
       setFilteredMovements(movementsData);
+      calcularIngresoDia(movementsData);
       
     } catch (error) {
       console.error("Error:", error);
@@ -191,7 +231,7 @@ const MovementsScreen = () => {
 
   useEffect(() => {
     applyFilters();
-  }, [movements, selectedTipo, selectedTransaccion, searchText, products]);
+  }, [movements, selectedTipo, selectedTransaccion, selectedPeriodo, searchText, products]);
 
   const formatCurrency = (amount, currency) => {
     if (currency === 'USD') {
@@ -234,6 +274,47 @@ const MovementsScreen = () => {
     });
   };
 
+  const getTransactionAmount = (movement) => {
+    switch (movement.tipoTransaccion) {
+      case 'Debito':
+        return `Bs. ${movement.precioVentaVES?.toFixed(2) || '0.00'}`;
+      case 'Efectivo USD':
+        return `$${movement.precioVentaUSD?.toFixed(2) || '0.00'}`;
+      case 'Efectivo VES':
+        return `Bs. ${movement.precioVentaVESEfectivo?.toFixed(2) || '0.00'}`;
+      case 'Mixto':
+        const partes = [];
+        if (movement.precioVentaUSD > 0) partes.push(`$${movement.precioVentaUSD.toFixed(2)}`);
+        if (movement.precioVentaVES > 0) partes.push(`Bs.${movement.precioVentaVES.toFixed(2)} (D)`);
+        if (movement.precioVentaVESEfectivo > 0) partes.push(`Bs.${movement.precioVentaVESEfectivo.toFixed(2)} (E)`);
+        return partes.join(' + ');
+      default:
+        return 'Monto no disponible';
+    }
+  };
+
+  const PeriodoBoton = ({ periodo, label, icon }) => (
+    <TouchableOpacity
+      style={[
+        styles.periodoBoton,
+        selectedPeriodo === periodo && styles.periodoBotonActive
+      ]}
+      onPress={() => setSelectedPeriodo(periodo)}
+    >
+      <MaterialCommunityIcons 
+        name={icon} 
+        size={16} 
+        color={selectedPeriodo === periodo ? "white" : "#64748b"} 
+      />
+      <Text style={[
+        styles.periodoBotonText,
+        selectedPeriodo === periodo && styles.periodoBotonTextActive
+      ]}>
+        {label}
+      </Text>
+    </TouchableOpacity>
+  );
+
   if (loading) {
     return (
       <SafeAreaView style={styles.safeArea}>
@@ -272,7 +353,45 @@ const MovementsScreen = () => {
             </View>
           </LinearGradient>
 
-          {/* FILTROS - Ahora visibles directamente */}
+          {/* Ingreso del día */}
+          <View style={styles.incomeToday}>
+            <Text style={styles.sectionTitle}>💰 Ingreso del día</Text>
+            <View style={styles.incomeRow}>
+              <View style={styles.incomeBox}>
+                <Text style={styles.incomeLabel}>USD</Text>
+                <Text style={styles.incomeValueUSD}>
+                  {formatCurrency(ingresoDia.usd, 'USD')}
+                </Text>
+              </View>
+              <View style={styles.incomeDivider} />
+              <View style={styles.incomeBox}>
+                <Text style={styles.incomeLabel}>VES Débito</Text>
+                <Text style={styles.incomeValueVES}>
+                  {formatCurrency(ingresoDia.vesDebito, 'VES')}
+                </Text>
+              </View>
+              <View style={styles.incomeDivider} />
+              <View style={styles.incomeBox}>
+                <Text style={styles.incomeLabel}>VES Efectivo</Text>
+                <Text style={styles.incomeValueVES}>
+                  {formatCurrency(ingresoDia.vesEfectivo, 'VES')}
+                </Text>
+              </View>
+            </View>
+          </View>
+
+          {/* Filtros de período */}
+          <View style={styles.periodoContainer}>
+            <Text style={styles.filterTitle}>Período:</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+              <PeriodoBoton periodo="dia" label="Hoy" icon="calendar-today" />
+              <PeriodoBoton periodo="semana" label="7 días" icon="calendar-week" />
+              <PeriodoBoton periodo="mes" label="30 días" icon="calendar-month" />
+              <PeriodoBoton periodo="todo" label="Todo" icon="calendar-blank" />
+            </ScrollView>
+          </View>
+
+          {/* Filtros de tipo y transacción */}
           <View style={styles.filtersContainer}>
             <Text style={styles.filterTitle}>Filtrar por tipo:</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false}>
@@ -359,26 +478,6 @@ const MovementsScreen = () => {
             </ScrollView>
           </View>
 
-          {/* Resumen de ingresos */}
-          <View style={styles.incomeSummary}>
-            <Text style={styles.sectionTitle}>Ingresos del período</Text>
-            <View style={styles.incomeRow}>
-              <View style={styles.incomeBox}>
-                <Text style={styles.incomeLabel}>USD</Text>
-                <Text style={styles.incomeValueUSD}>
-                  {formatCurrency(stats.totalIngresosUSD, 'USD')}
-                </Text>
-              </View>
-              <View style={styles.incomeDivider} />
-              <View style={styles.incomeBox}>
-                <Text style={styles.incomeLabel}>VES</Text>
-                <Text style={styles.incomeValueVES}>
-                  {formatCurrency(stats.totalIngresosVES, 'VES')}
-                </Text>
-              </View>
-            </View>
-          </View>
-
           {/* Lista de movimientos */}
           <View style={styles.movementsContainer}>
             <Text style={styles.sectionTitle}>
@@ -400,14 +499,14 @@ const MovementsScreen = () => {
                       </View>
                       <View style={styles.movementInfo}>
                         <Text style={styles.productName}>
-                          {products[movement.productID] || "Producto desconocido"}
+                          {products[movement.productoID] || "Producto desconocido"}
                         </Text>
                         <View style={styles.movementBadge}>
                           <Text style={[styles.movementType, { color }]}>
                             {movement.tipoMovimiento.toUpperCase()}
                           </Text>
                           <Text style={styles.movementQuantity}>
-                            {movement.tipoMovimiento === 'entrada' ? '+' : '-'}{movement.cantidad} unid
+                            {movement.cantidad} unid
                           </Text>
                         </View>
                       </View>
@@ -417,6 +516,13 @@ const MovementsScreen = () => {
                       <Text style={styles.movementDate}>{formatDate(movement.fecha)}</Text>
                       <Text style={styles.movementTransaction}>
                         {movement.tipoTransaccion || 'No especificado'}
+                      </Text>
+                    </View>
+
+                    <View style={styles.movementAmount}>
+                      <Text style={styles.movementAmountLabel}>Monto:</Text>
+                      <Text style={styles.movementAmountValue}>
+                        {getTransactionAmount(movement)}
                       </Text>
                     </View>
 
@@ -491,6 +597,83 @@ const styles = StyleSheet.create({
     color: '#1e293b',
     marginLeft: 10,
   },
+  incomeToday: {
+    backgroundColor: 'white',
+    marginHorizontal: 16,
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1e293b',
+    marginBottom: 12,
+  },
+  incomeRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    alignItems: 'center',
+    gap: 8,
+  },
+  incomeBox: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  incomeLabel: {
+    fontSize: 11,
+    color: '#64748b',
+    marginBottom: 4,
+    textAlign: 'center',
+  },
+  incomeValueUSD: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#059669',
+  },
+  incomeValueVES: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#45c0e8',
+  },
+  incomeDivider: {
+    width: 1,
+    height: 40,
+    backgroundColor: '#e2e8f0',
+  },
+  periodoContainer: {
+    backgroundColor: 'white',
+    marginHorizontal: 16,
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 16,
+  },
+  periodoBoton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f1f5f9',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 20,
+    marginRight: 8,
+    gap: 6,
+  },
+  periodoBotonActive: {
+    backgroundColor: '#45c0e8',
+  },
+  periodoBotonText: {
+    fontSize: 13,
+    color: '#64748b',
+    fontWeight: '500',
+  },
+  periodoBotonTextActive: {
+    color: 'white',
+  },
   filtersContainer: {
     backgroundColor: 'white',
     marginHorizontal: 16,
@@ -523,48 +706,6 @@ const styles = StyleSheet.create({
   },
   filterChipTextActive: {
     color: 'white',
-  },
-  incomeSummary: {
-    backgroundColor: 'white',
-    marginHorizontal: 16,
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 16,
-  },
-  sectionTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#1e293b',
-    marginBottom: 12,
-  },
-  incomeRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    alignItems: 'center',
-  },
-  incomeBox: {
-    flex: 1,
-    alignItems: 'center',
-  },
-  incomeLabel: {
-    fontSize: 12,
-    color: '#64748b',
-    marginBottom: 4,
-  },
-  incomeValueUSD: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: '#059669',
-  },
-  incomeValueVES: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: '#45c0e8',
-  },
-  incomeDivider: {
-    width: 1,
-    height: 40,
-    backgroundColor: '#e2e8f0',
   },
   movementsContainer: {
     paddingHorizontal: 16,
@@ -624,13 +765,30 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     color: '#45c0e8',
   },
+  movementAmount: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#e2e8f0',
+  },
+  movementAmountLabel: {
+    fontSize: 13,
+    color: '#64748b',
+    marginRight: 8,
+    fontWeight: '500',
+  },
+  movementAmountValue: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#1e293b',
+    flex: 1,
+  },
   movementObservaciones: {
     fontSize: 12,
     color: '#64748b',
     fontStyle: 'italic',
-    paddingTop: 8,
-    borderTopWidth: 1,
-    borderTopColor: '#e2e8f0',
   },
   emptyContainer: {
     alignItems: 'center',

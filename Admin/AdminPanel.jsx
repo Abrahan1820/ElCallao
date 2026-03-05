@@ -92,8 +92,8 @@ const AdminPanel = () => {
       case "changeGlobalPassword":
         navigation.navigate("AdminPasswordChange");
         break;
-      case "manageInsurance":
-        navigation.navigate("AdminInsurance");
+      case "manageCategory":
+        navigation.navigate("AdminCategory");
         break;
       default:
         Alert.alert("Opción no válida");
@@ -131,9 +131,9 @@ const AdminPanel = () => {
 
         <TouchableOpacity
           style={styles.optionButton}
-          onPress={() => handleOption("manageInsurance")}
+          onPress={() => handleOption("manageCategory")}
         >
-          <Text style={styles.optionText}>Administrar Aseguradoras</Text>
+          <Text style={styles.optionText}>Administrar Categorias</Text>
         </TouchableOpacity>
 
         <TouchableOpacity

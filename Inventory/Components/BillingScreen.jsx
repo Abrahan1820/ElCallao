@@ -117,6 +117,7 @@ const loadTasaBCV = async () => {
       const { data, error } = await supa
         .from("productCategory")
         .select("id, nombre")
+        .eq("esActivo", true)
         .order("nombre");
 
       if (error) throw error;
@@ -421,16 +422,38 @@ const loadTasaBCV = async () => {
             tipoTransaccion = "Efectivo VES";
             break;
           case "mixto":
-            // Distribuir proporcionalmente el pago mixto
-            const usdProportion = (parseFloat(mixedPayment.usd) || 0) / subtotalUSD;
-            const vesProportion = (parseFloat(mixedPayment.ves) || 0) / subtotalUSD;
-            const vesEfectivoProportion = (parseFloat(mixedPayment.vesEfectivo) || 0) / subtotalUSD;
-            
-            precioVentaUSD = (item.precioVentaUSD * item.quantity) * usdProportion;
-            precioVentaVES = (item.precioVentaVES * item.quantity) * vesProportion;
-            precioVentaVESEfectivo = (item.precioVentaVES * item.quantity) * vesEfectivoProportion;
-            tipoTransaccion = "Mixto";
-            break;
+  const usdAmount = parseFloat(mixedPayment.usd) || 0;
+  const vesAmount = parseFloat(mixedPayment.ves) || 0;
+  const vesEfectivoAmount = parseFloat(mixedPayment.vesEfectivo) || 0;
+  
+  // Proporción para USD (basada en el subtotal USD)
+  const usdProportion = usdAmount / subtotalUSD;
+  
+  // Proporción para VES (basada en el subtotal VES)
+  const totalVESPagado = vesAmount + vesEfectivoAmount;
+  const vesProportion = totalVESPagado > 0 ? totalVESPagado / subtotalVES : 0;
+  
+  // Distribuir VES entre débito y efectivo según lo que pagó el usuario
+  const vesDebitoProportion = vesAmount > 0 ? vesAmount / totalVESPagado : 0;
+  const vesEfectivoProportion = vesEfectivoAmount > 0 ? vesEfectivoAmount / totalVESPagado : 0;
+  
+  // Calcular valores por producto
+  const itemTotalUSD = item.precioVentaUSD * item.quantity;
+  const itemTotalVES = item.precioVentaVES * item.quantity;
+  
+  precioVentaUSD = itemTotalUSD * usdProportion;
+  
+  // Distribuir la parte en VES
+  if (totalVESPagado > 0) {
+    precioVentaVES = (itemTotalVES * vesProportion) * vesDebitoProportion;
+    precioVentaVESEfectivo = (itemTotalVES * vesProportion) * vesEfectivoProportion;
+  } else {
+    precioVentaVES = 0;
+    precioVentaVESEfectivo = 0;
+  }
+  
+  tipoTransaccion = "Mixto";
+  break;
         }
 
         // Crear movimiento

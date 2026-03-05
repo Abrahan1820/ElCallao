@@ -22,7 +22,7 @@ import { useNavigation, useFocusEffect } from "@react-navigation/native";
 const { width } = Dimensions.get('window');
 
 // --------------------------------------------------
-// 📊 Componente de Tarjeta de Producto (ahora es presionable)
+// 📊 Componente de Tarjeta de Producto
 // --------------------------------------------------
 const ProductCard = ({ product, categoriaNombre, proveedorNombre, onPress }) => {
   const getStockStatus = (stock, min, max) => {
@@ -69,7 +69,7 @@ const ProductCard = ({ product, categoriaNombre, proveedorNombre, onPress }) => 
         <Text style={styles.description} numberOfLines={2}>{product.descripcion}</Text>
       ) : null}
 
-      {/* Detalles de stock y precio */}
+      {/* Detalles de stock */}
       <View style={styles.detailsContainer}>
         <View style={styles.stockContainer}>
           <MaterialCommunityIcons name="package-variant" size={16} color="#7f8c8d" />
@@ -111,7 +111,7 @@ const ProductCard = ({ product, categoriaNombre, proveedorNombre, onPress }) => 
         </View>
       </View>
 
-      {/* Flecha indicadora de que es presionable */}
+      {/* Flecha indicadora */}
       <View style={styles.arrowContainer}>
         <MaterialCommunityIcons name="chevron-right" size={20} color="#94a3b8" />
       </View>
@@ -134,16 +134,19 @@ const InventoryViewScreen = () => {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [userData, setUserData] = useState(null);
+  const [empresaId, setEmpresaId] = useState(null);
+  
+  // Filtro de stock bajo
+  const [filtroStockBajo, setFiltroStockBajo] = useState(false);
+  
   const [stats, setStats] = useState({
     total: 0,
     lowStock: 0,
     outOfStock: 0,
-    totalValueUSD: 0,
-    totalValueVES: 0
   });
 
   // -----------------------------
-  // 👤 Obtener usuario desde AsyncStorage (igual que en MainPage)
+  // 👤 Obtener usuario desde AsyncStorage
   // -----------------------------
   const getUserFromStorage = async () => {
     try {
@@ -168,27 +171,7 @@ const InventoryViewScreen = () => {
       console.error("Usuario no tiene empresa asignada");
       return null;
     }
-
-    try {
-      // Si user.empresa ya es el ID, lo usamos directamente
-      // Si es el nombre, buscamos el ID
-      if (typeof user.empresaID === 'number' || !isNaN(parseInt(user.empresaID))) {
-        return user.empresaID;
-      } else {
-        // Buscar empresa por nombre
-        const { data, error } = await supa
-          .from("company")
-          .select("nombre")
-          .eq("empresaID", user.empresaID)
-          .single();
-
-        if (error) throw error;
-        return data?.nombre;
-      }
-    } catch (error) {
-      console.error("Error obteniendo empresaID:", error);
-      return null;
-    }
+    return user.empresaID;
   };
 
   // -----------------------------
@@ -198,7 +181,8 @@ const InventoryViewScreen = () => {
     try {
       const { data, error } = await supa
         .from("productCategory")
-        .select("id, nombre");
+        .select("id, nombre")
+        .eq("esActivo", true);
 
       if (error) throw error;
 
@@ -213,7 +197,7 @@ const InventoryViewScreen = () => {
   };
 
   // -----------------------------
-  // 📥 Cargar productos (SOLO activos y de la empresa del usuario)
+  // 📥 Cargar productos (SOLO activos)
   // -----------------------------
   const fetchProducts = async (empId) => {
     if (!empId) return [];
@@ -224,7 +208,7 @@ const InventoryViewScreen = () => {
         .select("*")
         .eq("empresaID", empId)
         .eq("esActivo", true)
-        .order("id", { ascending: true });
+        .order("nombre", { ascending: true });
 
       if (error) throw error;
       return data || [];
@@ -235,20 +219,15 @@ const InventoryViewScreen = () => {
   };
 
   // -----------------------------
-  // 📦 Cargar proveedores a partir de los productos
+  // 📦 Cargar proveedores
   // -----------------------------
-  const loadProveedoresFromProducts = async (productsData) => {
+  const loadProveedores = async (empId) => {
     try {
-      // Obtener IDs únicos de proveedores de los productos
-      const proveedorIds = [...new Set(productsData.map(p => p.proveedorID).filter(id => id))];
-      
-      if (proveedorIds.length === 0) return {};
-
-      // Cargar solo los proveedores que aparecen en los productos
       const { data, error } = await supa
         .from("provider")
         .select("proveedorID, nombre")
-        .in("proveedorID", proveedorIds);
+        .eq("empresaID", empId)
+        .eq("esActivo", true);
 
       if (error) throw error;
 
@@ -270,17 +249,43 @@ const InventoryViewScreen = () => {
     const total = productsData.length;
     const lowStock = productsData.filter(p => p.stockActual <= p.stockMinimo && p.stockActual > 0).length;
     const outOfStock = productsData.filter(p => p.stockActual === 0).length;
-    const totalValueUSD = productsData.reduce((sum, p) => sum + (p.stockActual * p.precioVentaUSD), 0);
-    const totalValueVES = productsData.reduce((sum, p) => sum + (p.stockActual * p.precioVentaVES), 0);
 
     setStats({
       total,
       lowStock,
       outOfStock,
-      totalValueUSD: totalValueUSD.toFixed(2),
-      totalValueVES: totalValueVES.toFixed(2)
     });
   };
+
+  // -----------------------------
+  // 🔄 Aplicar filtros
+  // -----------------------------
+  const applyFilters = useCallback(() => {
+    let filtered = [...products];
+
+    // Filtro por stock bajo
+    if (filtroStockBajo) {
+      filtered = filtered.filter(p => p.stockActual <= p.stockMinimo);
+    }
+
+    // Filtro por búsqueda
+    if (searchText.trim() !== "") {
+      const searchLower = searchText.toLowerCase();
+      filtered = filtered.filter(product => {
+        const categoriaNombre = categoriasMap[product.categoriaID] || "";
+        const proveedorNombre = proveedoresMap[product.proveedorID] || "";
+        
+        return (
+          product.nombre.toLowerCase().includes(searchLower) ||
+          (product.descripcion && product.descripcion.toLowerCase().includes(searchLower)) ||
+          categoriaNombre.toLowerCase().includes(searchLower) ||
+          proveedorNombre.toLowerCase().includes(searchLower)
+        );
+      });
+    }
+
+    setFilteredProducts(filtered);
+  }, [products, searchText, filtroStockBajo, categoriasMap, proveedoresMap]);
 
   // -----------------------------
   // 🔄 Cargar todos los datos
@@ -288,38 +293,32 @@ const InventoryViewScreen = () => {
   const loadAllData = async () => {
     setLoading(true);
     try {
-      // 1. Obtener usuario de AsyncStorage
       const user = await getUserFromStorage();
-      
       if (!user) {
         console.error("No hay usuario en sesión");
         setLoading(false);
         return;
       }
 
-      // 2. Obtener empresaID
       const empId = await getEmpresaIdFromUser(user);
-      
       if (!empId) {
         console.error("No se pudo determinar la empresa del usuario");
         setLoading(false);
         return;
       }
 
-      // 3. Cargar categorías (son globales)
-      await loadCategorias();
-
-      // 4. Cargar productos de la empresa
-      const productsData = await fetchProducts(empId);
+      setEmpresaId(empId);
       
-      // 5. Cargar proveedores basados en los productos
-      const proveedoresMapData = await loadProveedoresFromProducts(productsData);
-      setProveedoresMap(proveedoresMapData);
+      const [categoriasData, proveedoresData, productsData] = await Promise.all([
+        loadCategorias(),
+        loadProveedores(empId),
+        fetchProducts(empId)
+      ]);
 
-      // 6. Actualizar estados
+      setProveedoresMap(proveedoresData);
       setProducts(productsData);
-      setFilteredProducts(productsData);
       calculateStats(productsData);
+      
     } catch (error) {
       console.error("Error cargando datos:", error);
     } finally {
@@ -327,6 +326,10 @@ const InventoryViewScreen = () => {
       setRefreshing(false);
     }
   };
+
+  useEffect(() => {
+    applyFilters();
+  }, [products, searchText, filtroStockBajo]);
 
   // -----------------------------
   // 🔄 Pull to refresh
@@ -337,41 +340,11 @@ const InventoryViewScreen = () => {
   };
 
   // -----------------------------
-  // 🔍 Búsqueda
-  // -----------------------------
-  const handleSearch = (text) => {
-    setSearchText(text);
-    
-    if (text.trim() === "") {
-      setFilteredProducts(products);
-      return;
-    }
-
-    const searchLower = text.toLowerCase();
-    const filtered = products.filter(product => {
-      const categoriaNombre = categoriasMap[product.categoriaID] || "";
-      const proveedorNombre = proveedoresMap[product.proveedorID] || "";
-      
-      return (
-        product.nombre.toLowerCase().includes(searchLower) ||
-        (product.descripcion && product.descripcion.toLowerCase().includes(searchLower)) ||
-        categoriaNombre.toLowerCase().includes(searchLower) ||
-        proveedorNombre.toLowerCase().includes(searchLower)
-      );
-    });
-    
-    setFilteredProducts(filtered);
-  };
-
-  // -----------------------------
   // 📌 Navegar a detalle del producto
   // -----------------------------
   const handleProductPress = (product) => {
     navigation.navigate("ProductDetail", {
       productId: product.id,
-      productName: product.nombre,
-      empresaID: product.empresaID,
-      // Pasamos todos los datos del producto para no tener que cargarlos de nuevo
       productData: {
         ...product,
         categoriaNombre: categoriasMap[product.categoriaID] || "Sin categoría",
@@ -381,7 +354,14 @@ const InventoryViewScreen = () => {
   };
 
   // -----------------------------
-  // 🔄 Cargar datos al iniciar y cuando la pantalla recibe foco
+  // 📌 Navegar a crear producto
+  // -----------------------------
+  const handleCreateProduct = () => {
+    navigation.navigate("CreateProduct", { empresaId });
+  };
+
+  // -----------------------------
+  // 🔄 Cargar datos al iniciar
   // -----------------------------
   useEffect(() => {
     loadAllData();
@@ -389,7 +369,6 @@ const InventoryViewScreen = () => {
 
   useFocusEffect(
     useCallback(() => {
-      // Recargar datos cuando la pantalla vuelve a tener foco
       loadAllData();
     }, [])
   );
@@ -413,8 +392,6 @@ const InventoryViewScreen = () => {
   return (
     <SafeAreaView style={styles.safeArea}>
       <StatusBar barStyle="dark-content" backgroundColor={"#45c0e8"} />
-      
-      {/* NavBar FIJO */}
       <NavBar />
       
       <View style={styles.container}>
@@ -440,31 +417,53 @@ const InventoryViewScreen = () => {
               </View>
 
               <View style={styles.statsGrid}>
-                <View style={[styles.miniCard, stats.lowStock > 0 && styles.warningCard]}>
-                  <MaterialCommunityIcons name="alert" size={20} color={stats.lowStock > 0 ? "#f39c12" : "#94a3b8"} />
-                  <Text style={styles.miniNumber}>{stats.lowStock}</Text>
-                  <Text style={styles.miniLabel}>Stock Bajo</Text>
-                </View>
+                <TouchableOpacity 
+                  style={[
+                    styles.miniCard, 
+                    stats.lowStock > 0 && styles.warningCard,
+                    filtroStockBajo && styles.miniCardActive
+                  ]}
+                  onPress={() => setFiltroStockBajo(!filtroStockBajo)}
+                >
+                  <MaterialCommunityIcons 
+                    name="alert" 
+                    size={20} 
+                    color={filtroStockBajo ? "white" : (stats.lowStock > 0 ? "#f39c12" : "#94a3b8")} 
+                  />
+                  <Text style={[
+                    styles.miniNumber,
+                    filtroStockBajo && styles.miniNumberActive
+                  ]}>
+                    {stats.lowStock}
+                  </Text>
+                  <Text style={[
+                    styles.miniLabel,
+                    filtroStockBajo && styles.miniLabelActive
+                  ]}>
+                    Stock Bajo
+                  </Text>
+                </TouchableOpacity>
+                
                 <View style={[styles.miniCard, stats.outOfStock > 0 && styles.dangerCard]}>
-                  <MaterialCommunityIcons name="close-circle" size={20} color={stats.outOfStock > 0 ? "#e74c3c" : "#94a3b8"} />
+                  <MaterialCommunityIcons 
+                    name="close-circle" 
+                    size={20} 
+                    color={stats.outOfStock > 0 ? "#e74c3c" : "#94a3b8"} 
+                  />
                   <Text style={styles.miniNumber}>{stats.outOfStock}</Text>
                   <Text style={styles.miniLabel}>Agotados</Text>
                 </View>
               </View>
             </View>
 
-            {/* Valor del inventario */}
-            <View style={styles.valueContainer}>
-              <View style={styles.valueItem}>
-                <Text style={styles.valueLabel}>USD</Text>
-                <Text style={styles.valueAmount}>${stats.totalValueUSD}</Text>
-              </View>
-              <View style={styles.valueDivider} />
-              <View style={styles.valueItem}>
-                <Text style={styles.valueLabel}>VES</Text>
-                <Text style={styles.valueAmount}>Bs. {stats.totalValueVES}</Text>
-              </View>
-            </View>
+            {/* Botón para crear producto */}
+            <TouchableOpacity 
+              style={styles.createButton}
+              onPress={handleCreateProduct}
+            >
+              <MaterialCommunityIcons name="plus-circle" size={20} color="white" />
+              <Text style={styles.createButtonText}>Nuevo Producto</Text>
+            </TouchableOpacity>
 
             {/* Barra de búsqueda */}
             <View style={styles.searchContainer}>
@@ -474,14 +473,27 @@ const InventoryViewScreen = () => {
                 placeholder="Buscar producto..."
                 placeholderTextColor="#94a3b8"
                 value={searchText}
-                onChangeText={handleSearch}
+                onChangeText={setSearchText}
               />
               {searchText.length > 0 && (
-                <TouchableOpacity onPress={() => handleSearch("")}>
+                <TouchableOpacity onPress={() => setSearchText("")}>
                   <MaterialCommunityIcons name="close-circle" size={20} color="#94a3b8" />
                 </TouchableOpacity>
               )}
             </View>
+
+            {/* Indicador de filtro activo */}
+            {filtroStockBajo && (
+              <View style={styles.filterActive}>
+                <MaterialCommunityIcons name="filter" size={16} color="#f39c12" />
+                <Text style={styles.filterActiveText}>
+                  Mostrando solo productos con stock bajo
+                </Text>
+                <TouchableOpacity onPress={() => setFiltroStockBajo(false)}>
+                  <MaterialCommunityIcons name="close" size={16} color="#f39c12" />
+                </TouchableOpacity>
+              </View>
+            )}
           </View>
 
           {/* Lista de productos */}
@@ -510,15 +522,19 @@ const InventoryViewScreen = () => {
                 <MaterialCommunityIcons name="package-variant-closed" size={80} color="#cbd5e1" />
                 <Text style={styles.emptyText}>No se encontraron productos</Text>
                 {searchText.length > 0 && (
-                  <TouchableOpacity onPress={() => handleSearch("")}>
+                  <TouchableOpacity onPress={() => setSearchText("")}>
                     <Text style={styles.clearSearchText}>Limpiar búsqueda</Text>
+                  </TouchableOpacity>
+                )}
+                {filtroStockBajo && (
+                  <TouchableOpacity onPress={() => setFiltroStockBajo(false)}>
+                    <Text style={styles.clearSearchText}>Ver todos los productos</Text>
                   </TouchableOpacity>
                 )}
               </View>
             )}
           </View>
 
-          {/* Espacio al final */}
           <View style={styles.bottomSpace} />
         </ScrollView>
       </View>
@@ -527,7 +543,7 @@ const InventoryViewScreen = () => {
 };
 
 // --------------------------------------------------
-// 🎨 Estilos (agregué nuevos estilos para el ProductCard)
+// 🎨 Estilos
 // --------------------------------------------------
 const styles = StyleSheet.create({
   safeArea: {
@@ -611,6 +627,10 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
     borderColor: '#e2e8f0',
   },
+  miniCardActive: {
+    backgroundColor: '#f39c12',
+    borderColor: '#f39c12',
+  },
   warningCard: {
     borderColor: '#f39c12',
     backgroundColor: '#fef5e7',
@@ -625,40 +645,37 @@ const styles = StyleSheet.create({
     color: '#1e293b',
     marginTop: 4,
   },
+  miniNumberActive: {
+    color: 'white',
+  },
   miniLabel: {
     fontSize: 11,
     color: '#64748b',
     fontWeight: '500',
     textAlign: 'center',
   },
-  valueContainer: {
+  miniLabelActive: {
+    color: 'white',
+  },
+  createButton: {
+    backgroundColor: '#27ae60',
     flexDirection: 'row',
-    justifyContent: 'space-around',
-    backgroundColor: '#F8FAFC',
-    marginBottom: 16,
-    borderRadius: 12,
-    padding: 12,
-    borderWidth: 1.5,
-    borderColor: '#e2e8f0',
-  },
-  valueItem: {
     alignItems: 'center',
-    flex: 1,
+    justifyContent: 'center',
+    padding: 14,
+    borderRadius: 12,
+    marginBottom: 16,
+    gap: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
   },
-  valueLabel: {
-    fontSize: 12,
-    color: '#64748b',
-    marginBottom: 4,
-    fontWeight: '500',
-  },
-  valueAmount: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#1e293b',
-  },
-  valueDivider: {
-    width: 1,
-    backgroundColor: '#e2e8f0',
+  createButtonText: {
+    color: 'white',
+    fontSize: 15,
+    fontWeight: '600',
   },
   searchContainer: {
     flexDirection: 'row',
@@ -675,6 +692,24 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: '#1e293b',
     marginLeft: 8,
+  },
+  filterActive: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fef5e7',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    marginTop: 8,
+    gap: 6,
+    borderWidth: 1,
+    borderColor: '#f39c12',
+  },
+  filterActiveText: {
+    flex: 1,
+    fontSize: 13,
+    color: '#f39c12',
+    fontWeight: '500',
   },
   productsContainer: {
     marginBottom: 16,
@@ -844,6 +879,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#45c0e8',
     fontWeight: '600',
+    marginTop: 8,
   },
   bottomSpace: {
     height: 20,

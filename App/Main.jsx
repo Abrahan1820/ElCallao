@@ -14,7 +14,7 @@ import AdminPanel from "../Admin/AdminPanel";
 import AdminUsers from "../Admin/AdminUsers";
 import AdminReport from "../Admin/AdminReports";
 import AdminPasswordChange from "../Admin/AdminPasswordChange";
-import AdminInsurance from "../Admin/AdminInsurance";
+import AdminCategory from "../Admin/AdminCategory";
 import AdminProviders from "../Admin/AdminProvider";
 import StatisticsScreen from "../Inventory/Components/StatisticsScreen";
 import AdminManagment from "../Admin/AdminManagment";
@@ -27,6 +27,8 @@ import ProductSelectionModal from "../Inventory/Components/ProductSelectionModal
 import MovementsScreen from "../Inventory/Components/MovementsScreen";
 import PurchaseScreen from "../Inventory/Components/PurchaseScreen";
 import TasaBCVScreen from "../Inventory/Components/TasaBCVScreen";
+import CreateProduct from "../Inventory/Components/CreateProduct";
+import AdjustStock from "../Inventory/Components/AdjustStock";
 
 
 
@@ -187,7 +189,7 @@ const Main = () => {
       <Stack.Screen name="AdminUsers" component={AdminUsers} options={{ headerShown: false }}></Stack.Screen>
       <Stack.Screen name="AdminReport" component={AdminReport} options={{ headerShown: false }}></Stack.Screen>
       <Stack.Screen name="AdminPasswordChange" component={AdminPasswordChange} options={{ headerShown: false }}></Stack.Screen>
-      <Stack.Screen name="AdminInsurance" component={AdminInsurance} options={{ headerShown: false }}></Stack.Screen>
+      <Stack.Screen name="AdminCategory" component={AdminCategory} options={{ headerShown: false }}></Stack.Screen>
       <Stack.Screen name="AdminProvider" component={AdminProviders} options={{ headerShown: false }}></Stack.Screen>
       <Stack.Screen name="StatisticsScreen" component={StatisticsScreen} options={{ headerShown: false }}></Stack.Screen>
       <Stack.Screen name="AdminManagment" component={AdminManagment} options={{ headerShown: false }}></Stack.Screen>
@@ -200,7 +202,9 @@ const Main = () => {
       <Stack.Screen name="Movements" component={MovementsScreen} options={{ headerShown: false }}></Stack.Screen>
       <Stack.Screen name="Purchase" component={PurchaseScreen} options={{ headerShown: false }}></Stack.Screen>
       <Stack.Screen name="TasaBCV" component={TasaBCVScreen} options={{ headerShown: false }}></Stack.Screen>
-      
+      <Stack.Screen name="CreateProduct" component={CreateProduct} options={{ headerShown: false }}></Stack.Screen>
+      <Stack.Screen name="AdjustStock" component={AdjustStock} options={{ headerShown: false }}></Stack.Screen>
+
       
       </Stack.Navigator>
       <Toast config={toastConfig} />

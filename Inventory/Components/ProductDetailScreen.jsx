@@ -371,6 +371,11 @@ const ProductDetailScreen = ({ route, navigation }) => {
               <Text style={styles.infoLabel}>Unidad de medida:</Text>
               <Text style={styles.infoValue}>{product?.unidadMedida}</Text>
             </View>
+
+            <View style={styles.infoRow}>
+              <Text style={styles.infoLabel}>Categoría:</Text>
+              <Text style={styles.infoValue}>{product?.categoriaNombre || "Sin categoría"}</Text>
+            </View>
             
             <View style={styles.infoRow}>
               <Text style={styles.infoLabel}>ID del producto:</Text>
@@ -426,23 +431,23 @@ const ProductDetailScreen = ({ route, navigation }) => {
           </View>
 
           {/* Botones de acción */}
-          <View style={styles.actionButtons}>
-            <TouchableOpacity 
-              style={[styles.actionButton, styles.adjustButton]}
-              onPress={() => navigation.navigate("AdjustStock", { product })}
-            >
-              <MaterialCommunityIcons name="swap-horizontal" size={20} color="white" />
-              <Text style={styles.actionButtonText}>Ajustar Stock</Text>
-            </TouchableOpacity>
-            
-            <TouchableOpacity 
-              style={[styles.actionButton, styles.editButton]}
-              onPress={() => navigation.navigate("EditProduct", { product })}
-            >
-              <MaterialCommunityIcons name="pencil" size={20} color="white" />
-              <Text style={styles.actionButtonText}>Editar</Text>
-            </TouchableOpacity>
-          </View>
+<View style={styles.actionButtons}>
+  <TouchableOpacity 
+    style={[styles.actionButton, styles.adjustButton]}
+    onPress={() => navigation.navigate("AdjustStock", { product })}
+  >
+    <MaterialCommunityIcons name="swap-horizontal" size={20} color="white" />
+    <Text style={styles.actionButtonText}>Ajustar Stock</Text>
+  </TouchableOpacity>
+  
+  <TouchableOpacity 
+    style={[styles.actionButton, styles.editButton]}
+    onPress={() => navigation.navigate("CreateProduct", { product })}
+  >
+    <MaterialCommunityIcons name="pencil" size={20} color="white" />
+    <Text style={styles.actionButtonText}>Editar</Text>
+  </TouchableOpacity>
+</View>
 
         </ScrollView>
       </View>
