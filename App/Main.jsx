@@ -12,7 +12,6 @@ import PDFGenerator from "../pdf/PDFGenerator";
 import PDFModify from "../pdf/Pdfmodify";
 import AdminPanel from "../Admin/AdminPanel";
 import AdminUsers from "../Admin/AdminUsers";
-import AdminReport from "../Admin/AdminReports";
 import AdminPasswordChange from "../Admin/AdminPasswordChange";
 import AdminCategory from "../Admin/AdminCategory";
 import AdminProviders from "../Admin/AdminProvider";
@@ -187,7 +186,6 @@ const Main = () => {
       <Stack.Screen name="PDFModify" component={PDFModify} options={{ headerShown: false }}></Stack.Screen>
       <Stack.Screen name="AdminPanel" component={AdminPanel} options={{ headerShown: false }}></Stack.Screen>
       <Stack.Screen name="AdminUsers" component={AdminUsers} options={{ headerShown: false }}></Stack.Screen>
-      <Stack.Screen name="AdminReport" component={AdminReport} options={{ headerShown: false }}></Stack.Screen>
       <Stack.Screen name="AdminPasswordChange" component={AdminPasswordChange} options={{ headerShown: false }}></Stack.Screen>
       <Stack.Screen name="AdminCategory" component={AdminCategory} options={{ headerShown: false }}></Stack.Screen>
       <Stack.Screen name="AdminProvider" component={AdminProviders} options={{ headerShown: false }}></Stack.Screen>

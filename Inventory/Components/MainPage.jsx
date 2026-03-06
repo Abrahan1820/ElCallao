@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
   View,
   Text,
@@ -6,15 +6,17 @@ import {
   ScrollView,
   Image,
   TouchableOpacity,
+  Modal,
+  FlatList,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import Constants from "expo-constants";
-import { useNavigation } from "@react-navigation/native";
+import { useNavigation, useFocusEffect } from "@react-navigation/native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { deactivateKeepAwake } from "expo-keep-awake";
 import Toast from "react-native-toast-message";
 import { SupaClient } from "../../Supabase/supabase";
-
+import { Ionicons } from "@expo/vector-icons";
 
 // 📌 Funciones auxiliares
 function generarDiametro() {
@@ -52,6 +54,31 @@ const Tarjeta = ({ imagen, texto, pagina, onPress }) => {
   );
 };
 
+
+// 📌 Componente de notificación para stock bajo
+const StockNotificationItem = ({ product, onPress, disabled }) => (
+  <TouchableOpacity 
+    style={[
+      notificationStyles.item,
+      disabled && notificationStyles.itemDisabled
+    ]} 
+    onPress={onPress}
+    disabled={disabled}
+    activeOpacity={disabled ? 1 : 0.7}
+  >
+    <View style={notificationStyles.iconContainer}>
+      <Ionicons name="alert-circle" size={24} color="#f39c12" />
+    </View>
+    <View style={notificationStyles.content}>
+      <Text style={notificationStyles.productName}>{product.nombre}</Text>
+      <Text style={notificationStyles.stockText}>
+        Stock actual: {product.stockActual} | Mínimo: {product.stockMinimo}
+      </Text>
+    </View>
+    {!disabled && <Ionicons name="chevron-forward" size={20} color="#94a3b8" />}
+  </TouchableOpacity>
+);
+
 // 📌 Función para determinar el saludo según la hora del día
 const getGreeting = () => {
   const hour = new Date().getHours();
@@ -68,31 +95,34 @@ const MainMenu = () => {
   const supa = SupaClient();
   const [userName, setUserName] = useState("");
   const [esAdministrador, setEsAdministrador] = useState(false);
-  const [userData, setUserData] = useState(null); // Estado para almacenar los datos del usuario
+  const [userData, setUserData] = useState(null);
+  const [empresaId, setEmpresaId] = useState(null);
+  
+  // Estados para notificaciones de stock bajo
+  const [notificationCount, setNotificationCount] = useState(0);
+  const [lowStockProducts, setLowStockProducts] = useState([]);
+  const [notificationsModalVisible, setNotificationsModalVisible] = useState(false);
 
+  // Verificar acceso
   useEffect(() => {
     const verificarAcceso = async () => {
       try {
         const session = await AsyncStorage.getItem("userSession");
         const user = session ? JSON.parse(session) : null;
   
-        // Si no hay usuario o no está activo, redirigir
         if (!user || !user.esActivo) {
           await AsyncStorage.removeItem("userSession");
           Toast.show({
-                            type: "error",
-                            text1: "Usuario no encontrado",
-                            text2: "Cerrando Sesión.",
-                            position: "top",
-                            visibilityTime: 3000,
-                          });
+            type: "error",
+            text1: "Usuario no encontrado",
+            text2: "Cerrando Sesión.",
+            position: "top",
+            visibilityTime: 3000,
+          });
           navigation.navigate("Log_in");
           return;
         }
   
-        
-  
-        // Verificar en la base de datos el estado actual
         const { data, error } = await supa
           .from("user")
           .select("*")
@@ -103,12 +133,12 @@ const MainMenu = () => {
         if (error || !data?.esActivo) {
           await AsyncStorage.removeItem("userSession");
           Toast.show({
-                            type: "error",
-                            text1: "Sesión Inactiva",
-                            text2: "Cerrando Sesión.",
-                            position: "top",
-                            visibilityTime: 3000,
-                          });
+            type: "error",
+            text1: "Sesión Inactiva",
+            text2: "Cerrando Sesión.",
+            position: "top",
+            visibilityTime: 3000,
+          });
           navigation.navigate("Log_in");
         };
         
@@ -121,11 +151,7 @@ const MainMenu = () => {
     verificarAcceso();
   }, []);
 
-  useEffect(() => {
-    deactivateKeepAwake(); // Deja que la pantalla se apague como siempre
-  }, []);
-
-  // 📌 Obtener los datos del usuario desde AsyncStorage
+  // Obtener datos del usuario
   useEffect(() => {
     const fetchUserData = async () => {
       try {
@@ -134,7 +160,8 @@ const MainMenu = () => {
           const userData = JSON.parse(session);
           setUserName(userData.nombre || "Usuario");
           setEsAdministrador(Boolean(userData.esAdministrador));
-          setUserData(userData); // Guardar los datos del usuario
+          setUserData(userData);
+          setEmpresaId(userData.empresaID);
         }
       } catch (error) {}
     };
@@ -142,38 +169,89 @@ const MainMenu = () => {
     fetchUserData();
   }, []);
 
-  // 📌 Función para manejar la navegación a Sign_up con los datos del usuario
-  const handleEditProfile = () => {
-    if (userData) {
-      navigation.navigate("Sign_up", { user: userData }); // Pasar los datos del usuario
-    } else {
-      Toast.show({
-                  type: "error",
-                  text1: "Error",
-                  text2: "No se pudieron cargar los datos del usuario.",
-                  position: "top",
-                  visibilityTime: 3000,
-                });
+  // Cargar productos con stock bajo
+  const fetchLowStockProducts = async () => {
+    if (!empresaId) return;
+
+    try {
+      const { data, error } = await supa
+        .from("product")
+        .select("*")
+        .eq("empresaID", empresaId)
+        .eq("esActivo", true);
+
+      if (error) throw error;
+
+      // Filtrar productos con stock bajo (stockActual <= stockMinimo)
+      const lowStock = data.filter(
+        product => product.stockActual <= product.stockMinimo && product.stockActual > 0
+      );
+
+      setLowStockProducts(lowStock);
+      setNotificationCount(lowStock.length);
+    } catch (error) {
+      console.error("Error cargando productos con stock bajo:", error);
     }
   };
 
-  // 📌 Función para cerrar sesión
+  // Recargar notificaciones cuando la pantalla recibe foco
+  useFocusEffect(
+    useCallback(() => {
+      if (empresaId) {
+        fetchLowStockProducts();
+      }
+    }, [empresaId])
+  );
+
+  // Recargar cuando cambia empresaId
+  useEffect(() => {
+    if (empresaId) {
+      fetchLowStockProducts();
+    }
+  }, [empresaId]);
+
+  useEffect(() => {
+    deactivateKeepAwake();
+  }, []);
+
+  // Navegar a compra del producto
+  const handleNotificationPress = (product) => {
+    setNotificationsModalVisible(false);
+    navigation.navigate("Purchase", {
+      preselectedProduct: product,
+      suggestedQuantity: product.stockMinimo - product.stockActual + 5, // Sugerencia de compra
+    });
+  };
+
+  // Editar perfil
+  const handleEditProfile = () => {
+    if (userData) {
+      navigation.navigate("Sign_up", { user: userData });
+    } else {
+      Toast.show({
+        type: "error",
+        text1: "Error",
+        text2: "No se pudieron cargar los datos del usuario.",
+        position: "top",
+        visibilityTime: 3000,
+      });
+    }
+  };
+
+  // Cerrar sesión
   const logout = async () => {
     try {
       await AsyncStorage.removeItem("userSession");
       Toast.show({
-              type: "success",
-              text1: "Sesión cerrada",
-              text2: "Redirigiendo al inicio.",
-              position: "top",
-              visibilityTime: 3000,
-            });
+        type: "success",
+        text1: "Sesión cerrada",
+        text2: "Redirigiendo al inicio.",
+        position: "top",
+        visibilityTime: 3000,
+      });
       navigation.navigate("Log_in");
     } catch (error) {}
   };
-
- 
-  
 
   return (
     <LinearGradient
@@ -185,15 +263,32 @@ const MainMenu = () => {
           <Text style={Styles.tituloInicio}>Inicio</Text>
         </View>
 
-        {/* 📌 Sección de bienvenida con el nombre del usuario */}
+        {/* 📌 Sección de bienvenida con notificaciones */}
         <View style={Styles.contenedorSaludo}>
-          <Text style={Styles.Maintitle}>
-            Hola {userName ? userName : "Usuario"}
-          </Text>
+          <View style={Styles.headerRow}>
+            <Text style={Styles.Maintitle}>
+              Hola {userName ? userName : "Usuario"}
+            </Text>
+
+            {/* Campana de notificaciones */}
+            <TouchableOpacity
+              onPress={() => setNotificationsModalVisible(true)}
+              style={{ position: "relative" }}
+            >
+              <Ionicons name="notifications-outline" size={26} color="#fff" />
+              {notificationCount > 0 && (
+                <View style={Styles.badge}>
+                  <Text style={Styles.badgeText}>
+                    {notificationCount > 99 ? "99+" : notificationCount}
+                  </Text>
+                </View>
+              )}
+            </TouchableOpacity>
+          </View>
           <Text style={Styles.tituloInicio}>{getGreeting()}</Text>
         </View>
 
-        {/* 📌 Tarjetas para Generar PDF, Ver Lista de PDFs y Editar Perfil */}
+        {/* 📌 Tarjetas */}
         <View style={Styles.contenedorTarjetas}>
           <View style={Styles.contenedorFilas}>
             <Tarjeta
@@ -209,14 +304,14 @@ const MainMenu = () => {
               onPress={() => navigation.navigate("Movements")}
             />
             <Tarjeta
-              imagen={require("../Assets/usuario.png")} // Cambia la imagen según tu diseño
+              imagen={require("../Assets/usuario.png")}
               texto="Editar Perfil"
               pagina="Sign_up"
-              onPress={handleEditProfile} // Navegar a Sign_up con los datos del usuario
+              onPress={handleEditProfile}
             />
             {esAdministrador && (
               <Tarjeta
-                imagen={require("../Assets/editar.png")} // Cambia la imagen según tu diseño
+                imagen={require("../Assets/editar.png")}
                 texto="Administrar"
                 pagina="AdminPanel"
                 onPress={() => navigation.navigate("AdminPanel")}
@@ -224,39 +319,36 @@ const MainMenu = () => {
             )}
             {esAdministrador && (
               <Tarjeta
-                imagen={require("../Assets/graph.png")} // Cambia la imagen según tu diseño
+                imagen={require("../Assets/graph.png")}
                 texto="Estadisticas"
                 pagina="StatisticsScreen"
                 onPress={() => navigation.navigate("StatisticsScreen")}
               />
-              )}
-
-              {esAdministrador && (
+            )}
+            {esAdministrador && (
               <Tarjeta
-                imagen={require("../Assets/graph.png")} // Cambia la imagen según tu diseño
+                imagen={require("../Assets/tipo-de-cambio.png")}
                 texto="Tasa BCV"
                 pagina="TasaBCV"
                 onPress={() => navigation.navigate("TasaBCV")}
               />
-              )}
-
-              {esAdministrador && (
+            )}
+            {esAdministrador && (
               <Tarjeta
-                imagen={require("../Assets/graph.png")} // Cambia la imagen según tu diseño
+                imagen={require("../Assets/inventario-disponible.png")}
                 texto="Manejo Inventario"
                 pagina="Inventory"
                 onPress={() => navigation.navigate("Inventory")}
               />
-              )}
-
-              {esAdministrador && (
+            )}
+            {esAdministrador && (
               <Tarjeta
-                imagen={require("../Assets/graph.png")} // Cambia la imagen según tu diseño
+                imagen={require("../Assets/bolsa.png")}
                 texto="Compras"
                 pagina="Purchase"
                 onPress={() => navigation.navigate("Purchase")}
               />
-              )}
+            )}
           </View>
         </View>
 
@@ -267,18 +359,162 @@ const MainMenu = () => {
           </TouchableOpacity>
         </View>
       </ScrollView>
+
+      {/* Modal de notificaciones de stock bajo */}
+<Modal
+  visible={notificationsModalVisible}
+  animationType="slide"
+  transparent={true}
+  onRequestClose={() => setNotificationsModalVisible(false)}
+>
+  <View style={notificationStyles.modalContainer}>
+    <View style={notificationStyles.modalContent}>
+      <View style={notificationStyles.modalHeader}>
+        <Text style={notificationStyles.modalTitle}>
+          Productos con stock bajo
+        </Text>
+        <TouchableOpacity onPress={() => setNotificationsModalVisible(false)}>
+          <Ionicons name="close" size={24} color="#64748b" />
+        </TouchableOpacity>
+      </View>
+
+      {lowStockProducts.length > 0 ? (
+        <FlatList
+          data={lowStockProducts}
+          keyExtractor={(item) => item.id.toString()}
+          renderItem={({ item }) => (
+            <StockNotificationItem
+              product={item}
+              onPress={() => esAdministrador ? handleNotificationPress(item) : null}
+              disabled={!esAdministrador}
+            />
+          )}
+          contentContainerStyle={notificationStyles.list}
+          showsVerticalScrollIndicator={false}
+        />
+      ) : (
+        <View style={notificationStyles.emptyContainer}>
+          <Ionicons name="checkmark-circle" size={60} color="#27ae60" />
+          <Text style={notificationStyles.emptyText}>
+            No hay productos con stock bajo
+          </Text>
+        </View>
+      )}
+
+      {/* Botón "Ver todos" solo visible para administradores */}
+      {esAdministrador && lowStockProducts.length > 0 && (
+        <TouchableOpacity
+          style={notificationStyles.viewAllButton}
+          onPress={() => {
+            setNotificationsModalVisible(false);
+            navigation.navigate("Inventory", { filterLowStock: true });
+          }}
+        >
+          <Text style={notificationStyles.viewAllText}>
+            Ver todos en inventario
+          </Text>
+        </TouchableOpacity>
+      )}
+    </View>
+  </View>
+</Modal>
     </LinearGradient>
   );
 };
 
 export default MainMenu;
 
-// 📌 Estilos Generales
+// 📌 Estilos para notificaciones
+const notificationStyles = StyleSheet.create({
+  modalContainer: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "flex-end",
+  },
+  modalContent: {
+    backgroundColor: "white",
+    borderTopLeftRadius: 25,
+    borderTopRightRadius: 25,
+    paddingTop: 20,
+    paddingHorizontal: 16,
+    maxHeight: "80%",
+  },
+  modalHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 20,
+    paddingHorizontal: 4,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: "700",
+    color: "#1e293b",
+  },
+  list: {
+    paddingBottom: 20,
+  },
+  item: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 12,
+    paddingHorizontal: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: "#e2e8f0",
+  },
+  iconContainer: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "#fef5e7",
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 12,
+  },
+  content: {
+    flex: 1,
+  },
+  productName: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: "#1e293b",
+    marginBottom: 4,
+  },
+  stockText: {
+    fontSize: 12,
+    color: "#64748b",
+  },
+  emptyContainer: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 40,
+  },
+  emptyText: {
+    fontSize: 16,
+    color: "#94a3b8",
+    marginTop: 12,
+  },
+  viewAllButton: {
+    backgroundColor: "#f1f5f9",
+    padding: 16,
+    borderRadius: 12,
+    alignItems: "center",
+    marginTop: 10,
+    marginBottom: 20,
+  },
+  viewAllText: {
+    color: "#45c0e8",
+    fontSize: 14,
+    fontWeight: "600",
+  },
+});
+
+// 📌 Estilos Generales (agregamos badge y headerRow)
 const Styles = StyleSheet.create({
   settingsImg: {
-    width: 30, // Ajusta el tamaño según la resolución de la imagen
+    width: 30,
     height: 30,
-    resizeMode: "contain", // Evita la distorsión
+    resizeMode: "contain",
   },
   ContenedorGlobal: {
     flex: 1,
@@ -334,9 +570,9 @@ const Styles = StyleSheet.create({
     gap: 12,
   },
   cuadro: {
-    width: 160, // ancho fijo de cada tarjeta
-    height: 160, // alto fijo
-    backgroundColor: "#004b9a", // color uniforme
+    width: 160,
+    height: 160,
+    backgroundColor: "#004b9a",
     borderRadius: 16,
     padding: 10,
     marginBottom: 10,
@@ -363,5 +599,29 @@ const Styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "flex-end",
     paddingBottom: 30,
+  },
+  headerRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginTop: 20,
+    marginRight: 20,
+  },
+  badge: {
+    position: "absolute",
+    right: -8,
+    top: -4,
+    backgroundColor: "#e74c3c",
+    borderRadius: 12,
+    minWidth: 18,
+    height: 18,
+    paddingHorizontal: 4,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  badgeText: {
+    color: "white",
+    fontSize: 11,
+    fontWeight: "bold",
   },
 });

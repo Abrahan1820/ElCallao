@@ -1,12 +1,9 @@
 import React, { useState, useEffect } from "react";
-import { View, Text, StyleSheet, Image, Dimensions } from "react-native";
-import { LinearGradient } from "expo-linear-gradient";
-import theme from "../Themes/Theme";
+import { View, Text, StyleSheet, Dimensions } from "react-native";
 import { useNavigation } from "@react-navigation/native";
 
 // Obtener dimensiones de pantalla
 const { width, height } = Dimensions.get('window');
-const IPHONE_MAX_WIDTH = 428; // Ancho máximo para dispositivos grandes
 
 const InitialPageView = () => {
   const navigation = useNavigation();
@@ -22,24 +19,12 @@ const InitialPageView = () => {
   }, [navigation]);
 
   return (
-    <LinearGradient
-      colors={[
-        theme.colors.azulObscuro,
-        theme.colors.blanco,
-        theme.colors.blanco,
-        theme.colors.blanco,
-        theme.colors.azulClaro,
-      ]}
-      start={{ x: 0, y: 0 }}
-      end={{ x: 1, y: 1 }}
-      style={styles.container}
-    >
-      <Image
-        source={require("../Assets/logo911InicialPageView.png")}
-        style={styles.logoImage}
-        resizeMode="contain"
-      />
-    </LinearGradient>
+    <View style={styles.container}>
+      <View style={styles.textContainer}>
+        <Text style={styles.kioskoText}>KIOSKO</Text>
+        <Text style={styles.callaoText}>EL CALLAO</Text>
+      </View>
+    </View>
   );
 };
 
@@ -48,21 +33,25 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    width: '100%',
-    height: '100%'
+    backgroundColor: '#FFFFFF', // Fondo blanco
   },
-  logoImage: {
-    width: width * 0.8, // 80% del ancho de pantalla
-    maxWidth: IPHONE_MAX_WIDTH * 0.8, // Máximo para iPhone Max (342px)
-    height: undefined, // Altura automática
-    aspectRatio: 1, // Mantiene relación cuadrada (ajusta si tu imagen no es 1:1)
+  textContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  tituloInventario: {
-    position: "absolute",
-    fontSize: theme.title.fontSize,
-    fontWeight: theme.title.fontWeight,
-    color: theme.colors.textPrimary,
-    zIndex: 1,
+  kioskoText: {
+    fontSize: 36, // Tamaño más pequeño
+    fontWeight: '300', // Más delgado
+    color: '#367120', // Color verde solicitado
+    letterSpacing: 2, // Espaciado entre letras
+    marginBottom: 5,
+  },
+  callaoText: {
+    fontSize: 48, // Tamaño más grande
+    fontWeight: '700', // Más grueso
+    color: '#367120', // Color verde solicitado
+    letterSpacing: 3, // Espaciado entre letras
+    textTransform: 'uppercase', // Mayúsculas
   },
 });
 

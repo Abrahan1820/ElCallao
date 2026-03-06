@@ -7,15 +7,12 @@ import {
   StyleSheet,
   KeyboardAvoidingView,
   Platform,
-  Image,
   FlatList,
 } from "react-native";
 import { useNavigation } from "@react-navigation/native";
 import { SupaClient } from "../../Supabase/supabase";
 import Toast from "react-native-toast-message";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { Picker } from "@react-native-picker/picker";
-import { ScrollView } from "react-native";
 import DropDownPicker from "react-native-dropdown-picker";
 
 const Log_in = () => {
@@ -27,7 +24,7 @@ const Log_in = () => {
   const [password, setPassword] = useState("");
 
   const [open, setOpen] = useState(false);
-  const [value, setValue] = useState("V"); // Valor seleccionado
+  const [value, setValue] = useState("V");
   const [items, setItems] = useState([
     { label: "Venezolano", value: "V" },
     { label: "Extranjero", value: "E" },
@@ -46,7 +43,6 @@ const Log_in = () => {
 
       const userData = JSON.parse(session);
 
-      // 📌 Buscar si el usuario aún existe en la base de datos
       const { data, error } = await supa
         .from("user")
         .select("*")
@@ -55,16 +51,15 @@ const Log_in = () => {
         .single();
 
       if (error || !data) {
-        await AsyncStorage.removeItem("userSession"); // 🔹 Eliminar sesión guardada
-        navigation.navigate("Log_in"); // 🔹 Redirigir al login
+        await AsyncStorage.removeItem("userSession");
+        navigation.navigate("Log_in");
         return;
       }
 
-      navigation.navigate("PaginaPrincipal"); // 🔹 Usuario existe, continuar normalmente
+      navigation.navigate("PaginaPrincipal");
     } catch (error) {}
   };
 
-  // 📌 Guarda la sesión en AsyncStorage
   const saveSession = async (userData) => {
     try {
       await AsyncStorage.setItem("userSession", JSON.stringify(userData));
@@ -117,7 +112,6 @@ const Log_in = () => {
         return;
       }
 
-      // 📌 Guardar usuario en AsyncStorage
       await saveSession(data);
 
       Toast.show({
@@ -144,15 +138,13 @@ const Log_in = () => {
         renderItem={() => (
           <View style={styles.innerContainer}>
             <View style={styles.header}>
-              <Image
-                style={styles.logo}
-                source={require("../../Inventory/Assets/logo911.png")}
-              />
+              <Text style={styles.appTitle}>KIOSKO</Text>
+              <Text style={styles.appSubtitle}>EL CALLAO</Text>
             </View>
 
             <View style={styles.content}>
               <Text style={styles.Welcome}>Bienvenido</Text>
-              <Text style={styles.sign_in}>Por favor ingrese su cuenta</Text>
+              <Text style={styles.sign_in}>Ingresa tus credenciales</Text>
 
               <View style={styles.inputContainer}>
                 <DropDownPicker
@@ -165,7 +157,7 @@ const Log_in = () => {
                     setTipoDocumento(val());
                   }}
                   setItems={setItems}
-                  placeholder="Seleccione tipo de documento"
+                  placeholder="Tipo de documento"
                   style={styles.dropdown}
                   dropDownContainerStyle={styles.dropdownContainer}
                   textStyle={styles.dropdownText}
@@ -176,7 +168,7 @@ const Log_in = () => {
               <TextInput
                 style={styles.inputField}
                 placeholder="Cédula"
-                placeholderTextColor="grey"
+                placeholderTextColor="#94a3b8"
                 onChangeText={setCedula}
                 value={cedula}
                 keyboardType="numeric"
@@ -185,7 +177,7 @@ const Log_in = () => {
               <TextInput
                 style={styles.inputField}
                 placeholder="Contraseña"
-                placeholderTextColor="grey"
+                placeholderTextColor="#94a3b8"
                 onChangeText={setPassword}
                 value={password}
                 secureTextEntry
@@ -210,12 +202,10 @@ const Log_in = () => {
           </View>
         )}
       />
-      
     </KeyboardAvoidingView>
   );
 };
 
-// Estilos optimizados
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -230,17 +220,24 @@ const styles = StyleSheet.create({
   },
   header: {
     width: "100%",
-    height: 200, // Aumentamos la altura del contenedor
     alignItems: "center",
     justifyContent: "center",
+    marginTop: 60,
+    marginBottom: 40,
+  },
+  appTitle: {
+    fontSize: 32,
+    fontWeight: "300",
+    color: "#367120",
+    letterSpacing: 2,
     marginBottom: 5,
   },
-  logo: {
-    width: "80%", // Ocupará el 80% del ancho del contenedor
-    height: 100, // Altura fija suficiente
-    maxWidth: 300, // Límite máximo para dispositivos grandes
-    marginTop: 100,
-    marginBottom: 50
+  appSubtitle: {
+    fontSize: 42,
+    fontWeight: "700",
+    color: "#367120",
+    letterSpacing: 3,
+    textTransform: "uppercase",
   },
   content: {
     width: "100%",
@@ -253,7 +250,7 @@ const styles = StyleSheet.create({
     maxWidth: 672,
   },
   dropdown: {
-    borderColor: "#004b9a",
+    borderColor: "#367120",
     borderRadius: 25,
     height: 50,
     backgroundColor: "white",
@@ -261,13 +258,13 @@ const styles = StyleSheet.create({
     alignSelf: "center",
   },
   dropdownContainer: {
-    borderColor: "#004b9a",
+    borderColor: "#367120",
     borderRadius: 15,
     alignSelf: "center",
   },
   dropdownText: {
-    color: "#004b9a",
-    fontWeight: "bold",
+    color: "#367120",
+    fontWeight: "500",
     fontSize: 16,
     maxWidth: 672,
   },
@@ -275,9 +272,9 @@ const styles = StyleSheet.create({
     width: "100%",
     padding: 15,
     borderWidth: 1,
-    fontWeight: "bold",
-    borderColor: "#004b9a",
-    color: "#004b9a",
+    fontWeight: "500",
+    borderColor: "#367120",
+    color: "#367120",
     height: 50,
     marginBottom: 20,
     borderRadius: 25,
@@ -290,31 +287,31 @@ const styles = StyleSheet.create({
     color: "#45c0e8",
     textAlign: "center",
     marginBottom: 5,
-    marginTop: 0,
   },
   sign_in: {
     fontSize: 14,
-    fontWeight: "bold",
-    color: "#004b9a",
+    fontWeight: "500",
+    color: "#64748b",
     textAlign: "center",
-    marginBottom: 20,
+    marginBottom: 30,
   },
   button: {
     width: "100%",
-    backgroundColor: "#fe6b00",
+    backgroundColor: "#367120",
     borderRadius: 25,
     paddingVertical: 15,
-    marginTop: 20,
+    marginTop: 10,
     alignItems: "center",
     maxWidth: 672,
   },
   secondaryButton: {
-    backgroundColor: "#004b9a",
+    backgroundColor: "#45c0e8",
+    marginTop: 10,
   },
   buttonText: {
     color: "#FFF",
     fontSize: 16,
-    fontWeight: "bold",
+    fontWeight: "600",
   },
 });
 

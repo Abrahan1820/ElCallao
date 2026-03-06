@@ -234,11 +234,7 @@ const ProductDetailScreen = ({ route, navigation }) => {
       <View style={styles.container}>
         <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
           
-          {/* Botón para volver */}
-          <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
-            <MaterialCommunityIcons name="arrow-left" size={24} color="#45c0e8" />
-            <Text style={styles.backText}>Volver</Text>
-          </TouchableOpacity>
+          
 
           {/* Cabecera del producto con imagen */}
           <View style={styles.headerCard}>

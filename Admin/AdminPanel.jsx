@@ -83,9 +83,6 @@ const AdminPanel = () => {
       case "manageUsers":
         navigation.navigate("AdminUsers");
         break;
-      case "manageReports":
-        navigation.navigate("AdminReport");
-        break;
       case "manageProviders":
         navigation.navigate("AdminProvider");
         break;
@@ -120,13 +117,6 @@ const AdminPanel = () => {
           onPress={() => handleOption("manageUsers")}
         >
           <Text style={styles.optionText}>Administrar Usuarios</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={styles.optionButton}
-          onPress={() => handleOption("manageReports")}
-        >
-          <Text style={styles.optionText}>Administrar Reportes</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
