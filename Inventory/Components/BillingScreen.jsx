@@ -19,6 +19,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useNavigation, useFocusEffect } from "@react-navigation/native";
 import ProductSelectionModal from "./ProductSelectionModal";
 import PaymentMethodModal from "./PaymentMethodModal";
+import AdvanceCashModal from "./AdvanceCashModal"; // Nuevo modal
 import Toast from "react-native-toast-message";
 
 const BillingScreen = () => {
@@ -33,6 +34,7 @@ const BillingScreen = () => {
   const [categorias, setCategorias] = useState([]);
   const [userData, setUserData] = useState(null);
   const [modalVisible, setModalVisible] = useState(false);
+  const [advanceModalVisible, setAdvanceModalVisible] = useState(false); // Nuevo modal
   const [paymentModalVisible, setPaymentModalVisible] = useState(false);
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState(false);
@@ -150,7 +152,8 @@ const BillingScreen = () => {
         .from("product")
         .select("*")
         .eq("empresaID", empId)
-        .eq("esActivo", true);
+        .eq("esActivo", true)
+        .neq("id", 48);
       
       if (selectedCategoria !== "todas") {
         query = query.eq("categoriaID", selectedCategoria);
@@ -294,7 +297,7 @@ const BillingScreen = () => {
   };
 
   // -----------------------------
-  // 🛒 Agregar producto al carrito
+  // 🛒 Agregar producto normal al carrito
   // -----------------------------
   const addToCart = (product, quantity) => {
     if (quantity > product.stockActual) {
@@ -337,6 +340,43 @@ const BillingScreen = () => {
   };
 
   // -----------------------------
+  // 💰 Agregar avance de efectivo al carrito
+  // -----------------------------
+  const addAdvanceCash = (monto) => {
+    // Calcular el 20% adicional redondeado hacia arriba
+    const montoConInteres = Math.ceil(monto * 1.2);
+    const interes = montoConInteres - monto;
+    
+    // Crear un producto especial para avance de efectivo
+    const advanceProduct = {
+      id: 'advance-cash', // ID especial para identificar
+      nombre: '💰 AVANCE DE EFECTIVO',
+      descripcion: `Avance de efectivo - Monto entregado: Bs. ${monto}.`,
+      precioVentaUSD: 0, // No aplica USD
+      precioVentaVES: montoConInteres, // Monto con interés (va a débito)
+      precioVentaVESEfectivo: -monto, // Monto entregado en efectivo (negativo)
+      cantidad: 1,
+      isAdvance: true, // Flag para identificar
+      advanceDetails: {
+        montoEntregado: monto,
+        interes: interes,
+        totalConInteres: montoConInteres
+      }
+    };
+
+    setCart([...cart, advanceProduct]);
+    setAdvanceModalVisible(false);
+    
+    Toast.show({
+      type: "success",
+      text1: "Avance agregado",
+      text2: `Monto: Bs. ${monto} + 20% (Bs. ${interes}) = Bs. ${montoConInteres}`,
+      position: "top",
+      visibilityTime: 4000,
+    });
+  };
+
+  // -----------------------------
   // ❌ Eliminar producto del carrito
   // -----------------------------
   const removeFromCart = (productId) => {
@@ -347,6 +387,18 @@ const BillingScreen = () => {
   // 🔄 Actualizar cantidad de un producto en el carrito
   // -----------------------------
   const updateCartQuantity = (productId, newQuantity) => {
+    // No permitir cambiar cantidad de avance de efectivo
+    if (productId === 'advance-cash') {
+      Toast.show({
+        type: "info",
+        text1: "No disponible",
+        text2: "El avance de efectivo es único por transacción",
+        position: "top",
+        visibilityTime: 2000,
+      });
+      return;
+    }
+
     const product = cart.find(item => item.id === productId);
     
     if (newQuantity > product.stockActual) {
@@ -371,100 +423,144 @@ const BillingScreen = () => {
     }
   };
 
-  // -----------------------------
-  // 💰 Manejar pago
-  // -----------------------------
-  const handlePayment = () => {
-    if (cart.length === 0) {
+// -----------------------------
+// 💰 Manejar pago
+// -----------------------------
+const handlePayment = () => {
+  if (cart.length === 0) {
+    Toast.show({
+      type: "error",
+      text1: "Error",
+      text2: "No hay productos en el carrito",
+      position: "top",
+      visibilityTime: 3000,
+    });
+    return;
+  }
+  
+  // Verificar si hay avance de efectivo
+  const tieneAvance = cart.some(item => item.isAdvance);
+  
+  // Pasar la información al modal para que muestre solo las opciones disponibles
+  setPaymentModalVisible(true);
+};
+
+
+// ✅ Finalizar venta con método de pago
+const finalizeSaleWithPayment = async () => {
+  // Verificar si hay avance de efectivo en el carrito
+  const tieneAvance = cart.some(item => item.isAdvance);
+  
+  // Validar método de pago siempre
+  if (!paymentMethod) {
+    Toast.show({
+      type: "error",
+      text1: "Error",
+      text2: "Selecciona un método de pago",
+      position: "top",
+      visibilityTime: 3000,
+    });
+    return;
+  }
+
+  // Validar que el método de pago sea válido para avance de efectivo
+  if (tieneAvance && paymentMethod !== "debito" && paymentMethod !== "pagoMovil") {
+    Toast.show({
+      type: "error",
+      text1: "Error",
+      text2: "Para avance de efectivo solo puede usar Débito o Pago Móvil",
+      position: "top",
+      visibilityTime: 3000,
+    });
+    return;
+  }
+
+  // Validar pago móvil
+  if (paymentMethod === "pagoMovil") {
+    if (!pagoMovilRef || pagoMovilRef.length !== 4 || !/^\d+$/.test(pagoMovilRef)) {
       Toast.show({
         type: "error",
         text1: "Error",
-        text2: "No hay productos en el carrito",
+        text2: "Debe ingresar los últimos 4 dígitos de la referencia (solo números)",
         position: "top",
         visibilityTime: 3000,
       });
       return;
     }
-    setPaymentModalVisible(true);
-  };
+  }
 
-  // -----------------------------
-  // ✅ Finalizar venta con método de pago
-  // -----------------------------
-  const finalizeSaleWithPayment = async () => {
-    if (!paymentMethod) {
+  // Validar pago mixto (solo si no hay avance)
+  if (paymentMethod === "mixto" && !tieneAvance) {
+    const usdAmount = parseFloat(mixedPayment.usd) || 0;
+    const vesAmount = parseFloat(mixedPayment.ves) || 0;
+    const vesEfectivoAmount = parseFloat(mixedPayment.vesEfectivo) || 0;
+    
+    const totalPaidUSD = usdAmount + (vesAmount / TASA_CAMBIO) + (vesEfectivoAmount / TASA_CAMBIO);
+    
+    if (Math.abs(totalPaidUSD - subtotalUSD) > 0.01) {
       Toast.show({
         type: "error",
         text1: "Error",
-        text2: "Selecciona un método de pago",
+        text2: "La suma de los pagos no coincide con el total en USD",
         position: "top",
         visibilityTime: 3000,
       });
       return;
     }
+  }
 
-    // Validar pago móvil
-    if (paymentMethod === "pagoMovil") {
-      if (!pagoMovilRef || pagoMovilRef.length !== 4 || !/^\d+$/.test(pagoMovilRef)) {
+  setProcessing(true);
+  try {
+    // 1. Verificar stock para productos normales
+    for (const item of cart) {
+      if (item.isAdvance) continue; // Saltar avance de efectivo
+      
+      const { data, error } = await supa
+        .from("product")
+        .select("stockActual")
+        .eq("id", item.id)
+        .single();
+
+      if (error) throw error;
+
+      if (data.stockActual < item.quantity) {
         Toast.show({
           type: "error",
           text1: "Error",
-          text2: "Debe ingresar los últimos 4 dígitos de la referencia (solo números)",
+          text2: `Stock insuficiente para ${item.nombre}. Stock actual: ${data.stockActual}`,
           position: "top",
           visibilityTime: 3000,
         });
+        setProcessing(false);
         return;
       }
     }
 
-    // Validar pago mixto
-    if (paymentMethod === "mixto") {
-      const usdAmount = parseFloat(mixedPayment.usd) || 0;
-      const vesAmount = parseFloat(mixedPayment.ves) || 0;
-      const vesEfectivoAmount = parseFloat(mixedPayment.vesEfectivo) || 0;
-      
-      const totalPaidUSD = usdAmount + (vesAmount / TASA_CAMBIO) + (vesEfectivoAmount / TASA_CAMBIO);
-      
-      if (Math.abs(totalPaidUSD - subtotalUSD) > 0.01) {
-        Toast.show({
-          type: "error",
-          text1: "Error",
-          text2: "La suma de los pagos no coincide con el total en USD",
-          position: "top",
-          visibilityTime: 3000,
-        });
-        return;
-      }
-    }
-
-    setProcessing(true);
-    try {
-      // 1. Verificar stock nuevamente
-      for (const item of cart) {
-        const { data, error } = await supa
-          .from("product")
-          .select("stockActual")
-          .eq("id", item.id)
-          .single();
-
-        if (error) throw error;
-
-        if (data.stockActual < item.quantity) {
-          Toast.show({
-            type: "error",
-            text1: "Error",
-            text2: `Stock insuficiente para ${item.nombre}. Stock actual: ${data.stockActual}`,
-            position: "top",
-            visibilityTime: 3000,
+    // 2. Actualizar stock y crear movimientos
+    for (const item of cart) {
+      if (item.isAdvance) {
+        // Crear movimiento para avance de efectivo
+        const { error: movementError } = await supa
+          .from("productMovement")
+          .insert({
+            productoID: 48,
+            tipoMovimiento: "salida",
+            cantidad: 1,
+            precioCompraUSD: 0,
+            precioVentaUSD: 0,
+            precioCompraVES: 0,
+            precioVentaVES: item.precioVentaVES, // Monto con interés (débito)
+            precioVentaVESEfectivo: item.precioVentaVESEfectivo, // Monto entregado (negativo)
+            empresaID: empresaId,
+            tipoTransaccion: "Avance Efectivo",
+            pagoMovil: paymentMethod === "pagoMovil" ? parseInt(pagoMovilRef) : null,
+            observaciones: item.descripcion,
+            usuarioCedula: userData?.cedula
           });
-          setProcessing(false);
-          return;
-        }
-      }
 
-      // 2. Actualizar stock y crear movimientos para cada producto
-      for (const item of cart) {
-        // Actualizar stock
+        if (movementError) throw movementError;
+      } else {
+        // Actualizar stock para productos normales
         const { error: updateError } = await supa
           .from("product")
           .update({ stockActual: item.stockActual - item.quantity })
@@ -546,37 +642,38 @@ const BillingScreen = () => {
 
         if (movementError) throw movementError;
       }
-
-      // 3. Limpiar todo
-      setCart([]);
-      setPaymentMethod(null);
-      setPagoMovilRef("");
-      setMixedPayment({ usd: "", ves: "", vesEfectivo: "" });
-      setPaymentModalVisible(false);
-      
-      Toast.show({
-        type: "success",
-        text1: "Éxito",
-        text2: "Venta realizada correctamente",
-        position: "top",
-        visibilityTime: 3000,
-      });
-      
-      loadAllData();
-
-    } catch (error) {
-      console.error("Error finalizando venta:", error);
-      Toast.show({
-        type: "error",
-        text1: "Error",
-        text2: "No se pudo completar la venta",
-        position: "top",
-        visibilityTime: 3000,
-      });
-    } finally {
-      setProcessing(false);
     }
-  };
+
+    // 3. Limpiar todo
+    setCart([]);
+    setPaymentMethod(null);
+    setPagoMovilRef("");
+    setMixedPayment({ usd: "", ves: "", vesEfectivo: "" });
+    setPaymentModalVisible(false);
+    
+    Toast.show({
+      type: "success",
+      text1: "Éxito",
+      text2: "Venta realizada correctamente",
+      position: "top",
+      visibilityTime: 3000,
+    });
+    
+    loadAllData();
+
+  } catch (error) {
+    console.error("Error finalizando venta:", error);
+    Toast.show({
+      type: "error",
+      text1: "Error",
+      text2: "No se pudo completar la venta",
+      position: "top",
+      visibilityTime: 3000,
+    });
+  } finally {
+    setProcessing(false);
+  }
+};
 
   // -----------------------------
   // 🎨 Render
@@ -665,47 +762,74 @@ const BillingScreen = () => {
             )}
           </View>
 
-          {/* Botón para agregar productos */}
-          <TouchableOpacity 
-            style={styles.addButton}
-            onPress={() => setModalVisible(true)}
-          >
-            <MaterialCommunityIcons name="plus-circle" size={24} color="white" />
-            <Text style={styles.addButtonText}>Agregar Producto</Text>
-          </TouchableOpacity>
+          {/* Botones de acción */}
+          <View style={styles.actionButtons}>
+            <TouchableOpacity 
+              style={[styles.actionButton, styles.productButton]}
+              onPress={() => setModalVisible(true)}
+            >
+              <MaterialCommunityIcons name="package-variant" size={24} color="white" />
+              <Text style={styles.actionButtonText}>Producto</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity 
+              style={[styles.actionButton, styles.advanceButton]}
+              onPress={() => setAdvanceModalVisible(true)}
+            >
+              <MaterialCommunityIcons name="cash-plus" size={24} color="white" />
+              <Text style={styles.actionButtonText}>Avance Efectivo</Text>
+            </TouchableOpacity>
+          </View>
 
           {/* Carrito de compras */}
           <View style={styles.cartContainer}>
             <Text style={styles.sectionTitle}>
-              Carrito ({cart.length} {cart.length === 1 ? 'producto' : 'productos'})
+              Carrito ({cart.length} {cart.length === 1 ? 'ítem' : 'ítems'})
             </Text>
 
             {cart.length > 0 ? (
               cart.map((item) => (
                 <View key={item.id} style={styles.cartItem}>
                   <View style={styles.cartItemInfo}>
-                    <Text style={styles.cartItemName}>{item.nombre}</Text>
-                    <Text style={styles.cartItemPrice}>
-                      ${item.precioVentaUSD} / Bs.{item.precioVentaVES} c/u
+                    <Text style={[
+                      styles.cartItemName,
+                      item.isAdvance && styles.advanceItemName
+                    ]}>
+                      {item.nombre}
                     </Text>
+                    {item.isAdvance && item.advanceDetails && (
+                      <Text style={styles.advanceDetails}>
+                        Entrega: Bs. {item.advanceDetails.montoEntregado} | 
+                        Interés: Bs. {item.advanceDetails.interes}
+                      </Text>
+                    )}
+                    {!item.isAdvance && (
+                      <Text style={styles.cartItemPrice}>
+                        ${item.precioVentaUSD} / Bs.{item.precioVentaVES} c/u
+                      </Text>
+                    )}
                   </View>
                   
                   <View style={styles.cartItemControls}>
-                    <TouchableOpacity 
-                      style={styles.quantityButton}
-                      onPress={() => updateCartQuantity(item.id, item.quantity - 1)}
-                    >
-                      <MaterialCommunityIcons name="minus" size={16} color="#45c0e8" />
-                    </TouchableOpacity>
-                    
-                    <Text style={styles.cartItemQuantity}>{item.quantity}</Text>
-                    
-                    <TouchableOpacity 
-                      style={styles.quantityButton}
-                      onPress={() => updateCartQuantity(item.id, item.quantity + 1)}
-                    >
-                      <MaterialCommunityIcons name="plus" size={16} color="#45c0e8" />
-                    </TouchableOpacity>
+                    {!item.isAdvance && (
+                      <>
+                        <TouchableOpacity 
+                          style={styles.quantityButton}
+                          onPress={() => updateCartQuantity(item.id, item.quantity - 1)}
+                        >
+                          <MaterialCommunityIcons name="minus" size={16} color="#45c0e8" />
+                        </TouchableOpacity>
+                        
+                        <Text style={styles.cartItemQuantity}>{item.quantity}</Text>
+                        
+                        <TouchableOpacity 
+                          style={styles.quantityButton}
+                          onPress={() => updateCartQuantity(item.id, item.quantity + 1)}
+                        >
+                          <MaterialCommunityIcons name="plus" size={16} color="#45c0e8" />
+                        </TouchableOpacity>
+                      </>
+                    )}
                     
                     <TouchableOpacity 
                       style={styles.removeButton}
@@ -716,12 +840,25 @@ const BillingScreen = () => {
                   </View>
                   
                   <View style={styles.cartItemTotals}>
-                    <Text style={styles.cartItemTotalUSD}>
-                      USD: ${(item.precioVentaUSD * item.quantity).toFixed(2)}
-                    </Text>
-                    <Text style={styles.cartItemTotalVES}>
-                      VES: Bs. {(item.precioVentaVES * item.quantity).toFixed(2)}
-                    </Text>
+                    {item.isAdvance ? (
+                      <>
+                        <Text style={styles.advanceTotalDebito}>
+                          Débito: +Bs. {item.precioVentaVES}
+                        </Text>
+                        <Text style={styles.advanceTotalEfectivo}>
+                          Efectivo: {item.precioVentaVESEfectivo > 0 ? '+' : ''}{item.precioVentaVESEfectivo} Bs.
+                        </Text>
+                      </>
+                    ) : (
+                      <>
+                        <Text style={styles.cartItemTotalUSD}>
+                          USD: ${(item.precioVentaUSD * item.quantity).toFixed(2)}
+                        </Text>
+                        <Text style={styles.cartItemTotalVES}>
+                          VES: Bs. {(item.precioVentaVES * item.quantity).toFixed(2)}
+                        </Text>
+                      </>
+                    )}
                   </View>
                 </View>
               ))
@@ -735,65 +872,101 @@ const BillingScreen = () => {
           </View>
 
           {/* Resumen de factura */}
-          {cart.length > 0 && (
-            <View style={styles.summaryContainer}>
-              <Text style={styles.sectionTitle}>Resumen</Text>
-              
-              <View style={styles.summaryRow}>
-                <Text style={styles.summaryLabel}>Total USD:</Text>
-                <Text style={styles.summaryValueUSD}>${subtotalUSD.toFixed(2)}</Text>
-              </View>
-              
-              <View style={styles.summaryRow}>
-                <Text style={styles.summaryLabel}>Total VES:</Text>
-                <Text style={styles.summaryValueVES}>Bs. {subtotalVES.toFixed(2)}</Text>
-              </View>
+{/* Resumen de factura */}
+{cart.length > 0 && (
+  <View style={styles.summaryContainer}>
+    <Text style={styles.sectionTitle}>Resumen</Text>
+    
+    {cart.some(item => item.isAdvance) ? (
+      // Resumen especial para avance de efectivo
+      <>
+        <View style={styles.summaryRow}>
+          <Text style={styles.summaryLabel}>Monto entregado en efectivo:</Text>
+          <Text style={styles.advanceTotalEfectivo}>
+            -Bs. {Math.abs(cart.reduce((sum, item) => sum + (item.precioVentaVESEfectivo || 0), 0))}
+          </Text>
+        </View>
+        <View style={styles.summaryRow}>
+          <Text style={styles.summaryLabel}>Monto a débito (+20%):</Text>
+          <Text style={styles.summaryValueVES}>
+            +Bs. {cart.reduce((sum, item) => sum + (item.precioVentaVES || 0), 0)}
+          </Text>
+        </View>
+        <View style={[styles.summaryRow, styles.totalRow]}>
+          <Text style={styles.summaryLabel}>Total a pagar (débito):</Text>
+          <Text style={styles.summaryValueVES}>
+            Bs. {cart.reduce((sum, item) => sum + (item.precioVentaVES || 0), 0)}
+          </Text>
+        </View>
+        <View style={styles.infoRow}>
+          <MaterialCommunityIcons name="information" size={16} color="#64748b" />
+          <Text style={styles.infoText}>
+            El cliente recibe Bs. {Math.abs(cart.reduce((sum, item) => sum + (item.precioVentaVESEfectivo || 0), 0))} en efectivo y paga Bs. {cart.reduce((sum, item) => sum + (item.precioVentaVES || 0), 0)} con débito
+          </Text>
+        </View>
+      </>
+    ) : (
+      // Resumen normal
+      <>
+        <View style={styles.summaryRow}>
+          <Text style={styles.summaryLabel}>Total USD:</Text>
+          <Text style={styles.summaryValueUSD}>${subtotalUSD.toFixed(2)}</Text>
+        </View>
+        <View style={styles.summaryRow}>
+          <Text style={styles.summaryLabel}>Total VES:</Text>
+          <Text style={styles.summaryValueVES}>Bs. {subtotalVES.toFixed(2)}</Text>
+        </View>
+      </>
+    )}
 
-              {/* Botón para seleccionar método de pago */}
-              <TouchableOpacity 
-                style={styles.paymentButton}
-                onPress={handlePayment}
-              >
-                <MaterialCommunityIcons name="cash" size={24} color="white" />
-                <Text style={styles.paymentButtonText}>
-                  {paymentMethod ? "Cambiar método de pago" : "Seleccionar método de pago"}
-                </Text>
-              </TouchableOpacity>
+    {/* Botón para seleccionar método de pago - siempre visible pero con opciones limitadas para avance */}
+    <TouchableOpacity 
+      style={styles.paymentButton}
+      onPress={handlePayment}
+    >
+      <MaterialCommunityIcons name="cash" size={24} color="white" />
+      <Text style={styles.paymentButtonText}>
+        {paymentMethod ? "Cambiar método de pago" : "Seleccionar método de pago"}
+      </Text>
+    </TouchableOpacity>
 
-              {paymentMethod && (
-                <View style={styles.selectedPayment}>
-                  <Text style={styles.selectedPaymentText}>
-                    Método seleccionado: {
-                      paymentMethod === "debito" ? "Débito" :
-                      paymentMethod === "pagoMovil" ? "Pago Móvil" :
-                      paymentMethod === "efectivoUSD" ? "Efectivo USD" :
-                      paymentMethod === "efectivoVES" ? "Efectivo VES" : "Mixto"
-                    }
-                  </Text>
-                  {paymentMethod === "pagoMovil" && pagoMovilRef && (
-                    <Text style={styles.selectedPaymentRef}>
-                      Ref: ****{pagoMovilRef}
-                    </Text>
-                  )}
-                </View>
-              )}
+    {paymentMethod && (
+      <View style={styles.selectedPayment}>
+        <Text style={styles.selectedPaymentText}>
+          Método seleccionado: {
+            paymentMethod === "debito" ? "Débito" :
+            paymentMethod === "pagoMovil" ? "Pago Móvil" :
+            paymentMethod === "efectivoUSD" ? "Efectivo USD" :
+            paymentMethod === "efectivoVES" ? "Efectivo VES" : "Mixto"
+          }
+        </Text>
+        {paymentMethod === "pagoMovil" && pagoMovilRef && (
+          <Text style={styles.selectedPaymentRef}>
+            Ref: ****{pagoMovilRef}
+          </Text>
+        )}
+      </View>
+    )}
 
-              <TouchableOpacity 
-                style={[styles.finalizeButton, !paymentMethod && styles.finalizeButtonDisabled]}
-                onPress={finalizeSaleWithPayment}
-                disabled={processing || !paymentMethod}
-              >
-                {processing ? (
-                  <ActivityIndicator size="small" color="white" />
-                ) : (
-                  <>
-                    <MaterialCommunityIcons name="check-circle" size={24} color="white" />
-                    <Text style={styles.finalizeButtonText}>Finalizar Venta</Text>
-                  </>
-                )}
-              </TouchableOpacity>
-            </View>
-          )}
+    <TouchableOpacity 
+      style={[
+        styles.finalizeButton, 
+        !paymentMethod && styles.finalizeButtonDisabled
+      ]}
+      onPress={finalizeSaleWithPayment}
+      disabled={processing || !paymentMethod}
+    >
+      {processing ? (
+        <ActivityIndicator size="small" color="white" />
+      ) : (
+        <>
+          <MaterialCommunityIcons name="check-circle" size={24} color="white" />
+          <Text style={styles.finalizeButtonText}>Finalizar Venta</Text>
+        </>
+      )}
+    </TouchableOpacity>
+  </View>
+)}
 
         </ScrollView>
       </View>
@@ -879,22 +1052,30 @@ const BillingScreen = () => {
         </View>
       </Modal>
 
+      {/* Modal de avance de efectivo */}
+      <AdvanceCashModal
+        visible={advanceModalVisible}
+        onClose={() => setAdvanceModalVisible(false)}
+        onConfirm={addAdvanceCash}
+      />
+
       {/* Modal de método de pago */}
       <PaymentMethodModal
-        visible={paymentModalVisible}
-        onClose={() => setPaymentModalVisible(false)}
-        subtotalUSD={subtotalUSD}
-        subtotalVES={subtotalVES}
-        paymentMethod={paymentMethod}
-        setPaymentMethod={setPaymentMethod}
-        pagoMovilRef={pagoMovilRef}
-        setPagoMovilRef={setPagoMovilRef}
-        mixedPayment={mixedPayment}
-        setMixedPayment={setMixedPayment}
-        tasaCambio={TASA_CAMBIO}
-      />
+  visible={paymentModalVisible}
+  onClose={() => setPaymentModalVisible(false)}
+  subtotalUSD={subtotalUSD}
+  subtotalVES={subtotalVES}
+  paymentMethod={paymentMethod}
+  setPaymentMethod={setPaymentMethod}
+  pagoMovilRef={pagoMovilRef}
+  setPagoMovilRef={setPagoMovilRef}
+  mixedPayment={mixedPayment}
+  setMixedPayment={setMixedPayment}
+  tasaCambio={TASA_CAMBIO}
+  soloDebitoPagoMovil={cart.some(item => item.isAdvance)} // Nueva prop
+/>
       
-      {/* Toast component - asegúrate de tener esto en tu App.js o layout principal */}
+      {/* Toast component */}
       <Toast />
     </SafeAreaView>
   );
@@ -991,26 +1172,36 @@ const styles = StyleSheet.create({
     color: 'white',
     fontWeight: '600',
   },
-  addButton: {
-    backgroundColor: '#27ae60',
+  actionButtons: {
+    flexDirection: 'row',
+    gap: 12,
+    marginHorizontal: 16,
+    marginBottom: 20,
+  },
+  actionButton: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    marginHorizontal: 16,
-    marginBottom: 20,
     padding: 16,
     borderRadius: 12,
+    gap: 8,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 3,
   },
-  addButtonText: {
+  productButton: {
+    backgroundColor: '#27ae60',
+  },
+  advanceButton: {
+    backgroundColor: '#e67e22',
+  },
+  actionButtonText: {
     color: 'white',
     fontSize: 16,
     fontWeight: '600',
-    marginLeft: 8,
   },
   cartContainer: {
     backgroundColor: 'white',
@@ -1042,6 +1233,14 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: '#1e293b',
+  },
+  advanceItemName: {
+    color: '#e67e22',
+  },
+  advanceDetails: {
+    fontSize: 12,
+    color: '#64748b',
+    marginTop: 2,
   },
   cartItemPrice: {
     fontSize: 13,
@@ -1086,6 +1285,16 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#45c0e8',
   },
+  advanceTotalDebito: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#27ae60',
+  },
+  advanceTotalEfectivo: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#e74c3c',
+  },
   emptyCart: {
     alignItems: 'center',
     paddingVertical: 40,
@@ -1119,6 +1328,13 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderBottomWidth: 1,
     borderBottomColor: '#e2e8f0',
+  },
+  totalRow: {
+    borderBottomWidth: 0,
+    marginTop: 8,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#e2e8f0',
   },
   summaryLabel: {
     fontSize: 14,
@@ -1245,6 +1461,21 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
   },
+  infoRow: {
+  flexDirection: 'row',
+  backgroundColor: '#f0f9ff',
+  padding: 12,
+  borderRadius: 8,
+  marginTop: 12,
+  gap: 8,
+  borderWidth: 1,
+  borderColor: '#45c0e8',
+},
+infoText: {
+  flex: 1,
+  fontSize: 12,
+  color: '#1e293b',
+},
   modalButtons: {
     flexDirection: 'row',
     gap: 12,

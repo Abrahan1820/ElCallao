@@ -278,16 +278,29 @@ const getTransactionAmount = (movement) => {
   switch (movement.tipoTransaccion) {
     case 'Debito':
       return `Bs. ${movement.precioVentaVES?.toFixed(2) || '0.00'}`;
-    case 'Pago Movil': // NUEVO: Manejar pago móvil
+    case 'Pago Movil':
     case 'PagoMóvil':
     case 'PagoMovil':
-      return `Bs. ${movement.precioVentaVES?.toFixed(2) || '0.00'} (Ref: ${movement.pagoMovil || '****'})`;
+      // Mostrar la referencia si existe
+      if (movement.pagoMovil) {
+        return `Bs. ${movement.precioVentaVES?.toFixed(2) || '0.00'} (REF: ${movement.pagoMovil})`;
+      } else {
+        return `Bs. ${movement.precioVentaVES?.toFixed(2) || '0.00'}`;
+      }
     case 'Efectivo USD':
       return `$${movement.precioVentaUSD?.toFixed(2) || '0.00'}`;
     case 'Efectivo VES':
+    case 'Efectivo BS':
       return `Bs. ${movement.precioVentaVESEfectivo?.toFixed(2) || '0.00'}`;
-    case 'Efectivo BS': // Por si acaso también manejas este
-      return `Bs. ${movement.precioVentaVESEfectivo?.toFixed(2) || '0.00'}`;
+    case 'Avance Efectivo':
+      const montoEntregado = movement.precioVentaVESEfectivo ? Math.abs(movement.precioVentaVESEfectivo) : 0;
+      if (movement.pagoMovil){
+        return `Bs. ${movement.precioVentaVES?.toFixed(2) || '0.00'} (Entregado: -Bs. ${montoEntregado}) (REF: ${movement.pagoMovil})`;
+      }
+      else{
+        return `Bs. ${movement.precioVentaVES?.toFixed(2) || '0.00'} (Entregado: -Bs. ${montoEntregado})`;
+      }
+      
     case 'Mixto':
       const partes = [];
       if (movement.precioVentaUSD > 0) partes.push(`$${movement.precioVentaUSD.toFixed(2)}`);
@@ -295,7 +308,6 @@ const getTransactionAmount = (movement) => {
       if (movement.precioVentaVESEfectivo > 0) partes.push(`Bs.${movement.precioVentaVESEfectivo.toFixed(2)} (E)`);
       return partes.join(' + ') || 'Monto no disponible';
     default:
-      // Debug: mostrar qué tipo de transacción está llegando
       console.log('Tipo de transacción no manejado:', movement.tipoTransaccion);
       return 'Monto no disponible';
   }

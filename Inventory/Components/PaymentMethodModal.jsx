@@ -22,6 +22,7 @@ const PaymentMethodModal = ({
   mixedPayment,
   setMixedPayment,
   tasaCambio,
+  soloDebitoPagoMovil, // Prop para filtrar opciones
 }) => {
   
   const handleSelectMethod = (method) => {
@@ -44,7 +45,7 @@ const PaymentMethodModal = ({
   const getMethodIcon = (method) => {
     switch (method) {
       case "debito": return "credit-card";
-      case "pagoMovil": return "cellphone"; // Icono para pago móvil
+      case "pagoMovil": return "cellphone";
       case "efectivoUSD": return "cash-usd";
       case "efectivoVES": return "cash";
       case "mixto": return "swap-horizontal";
@@ -55,13 +56,27 @@ const PaymentMethodModal = ({
   const getMethodColor = (method) => {
     switch (method) {
       case "debito": return "#3498db";
-      case "pagoMovil": return "#9b59b6"; // Color morado para pago móvil
+      case "pagoMovil": return "#9b59b6";
       case "efectivoUSD": return "#f39c12";
       case "efectivoVES": return "#27ae60";
       case "mixto": return "#e67e22";
       default: return "#64748b";
     }
   };
+
+  // Definir opciones según el contexto
+  const opcionesPago = soloDebitoPagoMovil 
+    ? [
+        { value: "debito", label: "Débito", icon: "credit-card", color: "#3498db", subtitle: "Pago con tarjeta de débito (Bs.)" },
+        { value: "pagoMovil", label: "Pago Móvil", icon: "cellphone", color: "#9b59b6", subtitle: "Pago por transferencia (Bs.)" }
+      ]
+    : [
+        { value: "debito", label: "Débito", icon: "credit-card", color: "#3498db", subtitle: "Pago con tarjeta de débito (Bs.)" },
+        { value: "pagoMovil", label: "Pago Móvil", icon: "cellphone", color: "#9b59b6", subtitle: "Pago por transferencia (Bs.)" },
+        { value: "efectivoUSD", label: "Efectivo USD", icon: "cash-usd", color: "#f39c12", subtitle: "Pago en efectivo en dólares" },
+        { value: "efectivoVES", label: "Efectivo VES", icon: "cash", color: "#27ae60", subtitle: "Pago en efectivo en bolívares" },
+        { value: "mixto", label: "Mixto", icon: "swap-horizontal", color: "#e67e22", subtitle: "Combinación de USD y VES" }
+      ];
 
   // Validar si el pago mixto es correcto
   const isMixedPaymentValid = () => {
@@ -89,9 +104,7 @@ const PaymentMethodModal = ({
     
     if (Math.abs(diferenciaUSD) <= 0.01) return null;
     
-    // Determinar qué moneda sugerir basado en lo que ya se ingresó
     if (usd > 0 && ves === 0 && vesEfectivo === 0) {
-      // Si solo puso USD, sugerir VES
       const vesFaltante = diferenciaUSD * tasaCambio;
       return {
         mensaje: `Faltan Bs. ${vesFaltante.toFixed(2)} en VES`,
@@ -99,14 +112,12 @@ const PaymentMethodModal = ({
         moneda: 'VES'
       };
     } else if ((ves > 0 || vesEfectivo > 0) && usd === 0) {
-      // Si solo puso VES, sugerir USD
       return {
         mensaje: `Faltan $${diferenciaUSD.toFixed(2)} en USD`,
         monto: diferenciaUSD,
         moneda: 'USD'
       };
     } else {
-      // Si tiene ambas, sugerir la que haga falta
       if (diferenciaUSD > 0) {
         return {
           mensaje: `Faltan $${diferenciaUSD.toFixed(2)} en USD o Bs. ${(diferenciaUSD * tasaCambio).toFixed(2)} en VES`,
@@ -151,123 +162,33 @@ const PaymentMethodModal = ({
               </View>
             </View>
 
-            {/* Opciones de pago */}
+            {/* Opciones de pago - AHORA USANDO opcionesPago */}
             <View style={styles.optionsContainer}>
-              <TouchableOpacity
-                style={[
-                  styles.paymentOption,
-                  paymentMethod === "debito" && styles.paymentOptionActive,
-                ]}
-                onPress={() => handleSelectMethod("debito")}
-              >
-                <View style={[styles.optionIcon, { backgroundColor: getMethodColor("debito") + "20" }]}>
-                  <MaterialCommunityIcons 
-                    name={getMethodIcon("debito")} 
-                    size={24} 
-                    color={getMethodColor("debito")} 
-                  />
-                </View>
-                <View style={styles.optionInfo}>
-                  <Text style={styles.optionTitle}>Débito</Text>
-                  <Text style={styles.optionSubtitle}>Pago con tarjeta de débito (Bs.)</Text>
-                </View>
-                {paymentMethod === "debito" && (
-                  <MaterialCommunityIcons name="check-circle" size={24} color="#27ae60" />
-                )}
-              </TouchableOpacity>
-
-              {/* NUEVA OPCIÓN: Pago Móvil */}
-              <TouchableOpacity
-                style={[
-                  styles.paymentOption,
-                  paymentMethod === "pagoMovil" && styles.paymentOptionActive,
-                ]}
-                onPress={() => handleSelectMethod("pagoMovil")}
-              >
-                <View style={[styles.optionIcon, { backgroundColor: getMethodColor("pagoMovil") + "20" }]}>
-                  <MaterialCommunityIcons 
-                    name={getMethodIcon("pagoMovil")} 
-                    size={24} 
-                    color={getMethodColor("pagoMovil")} 
-                  />
-                </View>
-                <View style={styles.optionInfo}>
-                  <Text style={styles.optionTitle}>Pago Móvil</Text>
-                  <Text style={styles.optionSubtitle}>Pago por transferencia (Bs.)</Text>
-                </View>
-                {paymentMethod === "pagoMovil" && (
-                  <MaterialCommunityIcons name="check-circle" size={24} color="#27ae60" />
-                )}
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[
-                  styles.paymentOption,
-                  paymentMethod === "efectivoUSD" && styles.paymentOptionActive,
-                ]}
-                onPress={() => handleSelectMethod("efectivoUSD")}
-              >
-                <View style={[styles.optionIcon, { backgroundColor: getMethodColor("efectivoUSD") + "20" }]}>
-                  <MaterialCommunityIcons 
-                    name={getMethodIcon("efectivoUSD")} 
-                    size={24} 
-                    color={getMethodColor("efectivoUSD")} 
-                  />
-                </View>
-                <View style={styles.optionInfo}>
-                  <Text style={styles.optionTitle}>Efectivo USD</Text>
-                  <Text style={styles.optionSubtitle}>Pago en efectivo en dólares</Text>
-                </View>
-                {paymentMethod === "efectivoUSD" && (
-                  <MaterialCommunityIcons name="check-circle" size={24} color="#27ae60" />
-                )}
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[
-                  styles.paymentOption,
-                  paymentMethod === "efectivoVES" && styles.paymentOptionActive,
-                ]}
-                onPress={() => handleSelectMethod("efectivoVES")}
-              >
-                <View style={[styles.optionIcon, { backgroundColor: getMethodColor("efectivoVES") + "20" }]}>
-                  <MaterialCommunityIcons 
-                    name={getMethodIcon("efectivoVES")} 
-                    size={24} 
-                    color={getMethodColor("efectivoVES")} 
-                  />
-                </View>
-                <View style={styles.optionInfo}>
-                  <Text style={styles.optionTitle}>Efectivo VES</Text>
-                  <Text style={styles.optionSubtitle}>Pago en efectivo en bolívares</Text>
-                </View>
-                {paymentMethod === "efectivoVES" && (
-                  <MaterialCommunityIcons name="check-circle" size={24} color="#27ae60" />
-                )}
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[
-                  styles.paymentOption,
-                  paymentMethod === "mixto" && styles.paymentOptionActive,
-                ]}
-                onPress={() => handleSelectMethod("mixto")}
-              >
-                <View style={[styles.optionIcon, { backgroundColor: getMethodColor("mixto") + "20" }]}>
-                  <MaterialCommunityIcons 
-                    name={getMethodIcon("mixto")} 
-                    size={24} 
-                    color={getMethodColor("mixto")} 
-                  />
-                </View>
-                <View style={styles.optionInfo}>
-                  <Text style={styles.optionTitle}>Mixto</Text>
-                  <Text style={styles.optionSubtitle}>Combinación de USD y VES</Text>
-                </View>
-                {paymentMethod === "mixto" && (
-                  <MaterialCommunityIcons name="check-circle" size={24} color="#27ae60" />
-                )}
-              </TouchableOpacity>
+              {opcionesPago.map((opcion) => (
+                <TouchableOpacity
+                  key={opcion.value}
+                  style={[
+                    styles.paymentOption,
+                    paymentMethod === opcion.value && styles.paymentOptionActive,
+                  ]}
+                  onPress={() => handleSelectMethod(opcion.value)}
+                >
+                  <View style={[styles.optionIcon, { backgroundColor: opcion.color + '20' }]}>
+                    <MaterialCommunityIcons 
+                      name={opcion.icon} 
+                      size={24} 
+                      color={opcion.color} 
+                    />
+                  </View>
+                  <View style={styles.optionInfo}>
+                    <Text style={styles.optionTitle}>{opcion.label}</Text>
+                    <Text style={styles.optionSubtitle}>{opcion.subtitle}</Text>
+                  </View>
+                  {paymentMethod === opcion.value && (
+                    <MaterialCommunityIcons name="check-circle" size={24} color="#27ae60" />
+                  )}
+                </TouchableOpacity>
+              ))}
             </View>
 
             {/* Campo para referencia de pago móvil */}
@@ -280,7 +201,6 @@ const PaymentMethodModal = ({
                   style={styles.pagoMovilInput}
                   value={pagoMovilRef}
                   onChangeText={(text) => {
-                    // Solo permitir números y máximo 4 dígitos
                     const numeric = text.replace(/[^0-9]/g, "");
                     if (numeric.length <= 4) {
                       setPagoMovilRef(numeric);
@@ -306,8 +226,8 @@ const PaymentMethodModal = ({
               </View>
             )}
 
-            {/* Campos para pago mixto */}
-            {paymentMethod === "mixto" && (
+            {/* Campos para pago mixto - solo mostrar si está disponible */}
+            {paymentMethod === "mixto" && !soloDebitoPagoMovil && (
               <View style={styles.mixedContainer}>
                 <Text style={styles.mixedTitle}>Distribuir pago:</Text>
                 
@@ -351,7 +271,6 @@ const PaymentMethodModal = ({
                   * Total USD: ${subtotalUSD.toFixed(2)} (tasa: 1 USD = {tasaCambio} VES)
                 </Text>
                 
-                {/* Indicador de faltante/sobrante */}
                 {(() => {
                   const faltante = calcularFaltante();
                   if (!faltante) {
@@ -499,7 +418,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#64748b',
   },
-  // Nuevos estilos para pago móvil
   pagoMovilContainer: {
     backgroundColor: '#f8fafc',
     padding: 15,

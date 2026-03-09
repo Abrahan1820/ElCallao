@@ -161,11 +161,13 @@ const CreateProduct = () => {
   }, []);
 
   // 📌 Calcular precio en Bs cuando cambia precioVentaUSD, tasa o la opción de congelado
+  // APLICANDO CEIL PARA REDONDEAR HACIA ARRIBA
   useEffect(() => {
     if (precioCongelado === true && precioVentaUSD && tasaBCV) {
       const precioUSD = parseFloat(precioVentaUSD) || 0;
-      const calculado = precioUSD * tasaBCV;
-      setPrecioVentaVESCalculado(calculado.toFixed(2));
+      // Redondear hacia arriba con Math.ceil
+      const calculado = Math.ceil(precioUSD * tasaBCV);
+      setPrecioVentaVESCalculado(calculado);
     } else {
       setPrecioVentaVESCalculado(null);
     }
@@ -471,7 +473,15 @@ const CreateProduct = () => {
 
     try {
       if (product) {
-        // Actualizar producto existente (NO actualizar stockActual)
+        // Actualizar producto existente
+        let precioVentaVES = product.precioVentaVES; // Mantener el existente por defecto
+        
+        // Si se seleccionó "Sí" para congelar precio, calcular y redondear hacia arriba
+        if (precioCongelado === true && precioVentaUSD && tasaBCV) {
+          const precioUSD = parseFloat(precioVentaUSD) || 0;
+          precioVentaVES = Math.ceil(precioUSD * tasaBCV);
+        }
+
         const { error: updateError } = await supa
           .from("product")
           .update({
@@ -486,8 +496,9 @@ const CreateProduct = () => {
             imagen: isNewImage ? imageUrl : product.imagen,
             precioCompraUSD: parseFloat(precioCompraUSD) || 0,
             precioVentaUSD: parseFloat(precioVentaUSD) || 0,
-            precioCongelado: precioCongelado, // Guardar el valor del precio congelado
-            // precioCompraVES y precioVentaVES se actualizan con trigger
+            precioCongelado: precioCongelado,
+            // Si está congelado, guardamos el valor calculado y redondeado
+            ...(precioCongelado === true && { precioVentaVES: precioVentaVES })
           })
           .eq("id", product.id);
 
@@ -504,6 +515,14 @@ const CreateProduct = () => {
         navigation.goBack();
       } else {
         // Crear nuevo producto
+        let precioVentaVES = 0;
+        
+        // Si se seleccionó "Sí" para congelar precio, calcular y redondear hacia arriba
+        if (precioCongelado === true && precioVentaUSD && tasaBCV) {
+          const precioUSD = parseFloat(precioVentaUSD) || 0;
+          precioVentaVES = Math.ceil(precioUSD * tasaBCV);
+        }
+
         const { error: insertError } = await supa
           .from("product")
           .insert([
@@ -521,9 +540,9 @@ const CreateProduct = () => {
               imagen: imageUrl || null,
               precioCompraUSD: parseFloat(precioCompraUSD) || 0,
               precioVentaUSD: parseFloat(precioVentaUSD) || 0,
-              precioCongelado: precioCongelado, // Guardar el valor del precio congelado
+              precioCongelado: precioCongelado,
+              precioVentaVES: precioVentaVES, // Guardar el valor calculado y redondeado
               precioCompraVES: 0,
-              precioVentaVES: 0,
             },
           ]);
 
@@ -1067,7 +1086,7 @@ const styles = StyleSheet.create({
     color: "#1e293b",
     fontWeight: "600",
   },
-  // Nuevos estilos para precio congelado
+  // Estilos para precio congelado
   precioCongeladoContainer: {
     marginBottom: 20,
     backgroundColor: "#f8fafc",
@@ -1123,6 +1142,12 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: "#64748b",
     marginTop: 2,
+  },
+  precioCalculadoNota: {
+    fontSize: 11,
+    color: '#64748b',
+    marginTop: 4,
+    fontStyle: 'italic',
   },
   imageButtons: {
     flexDirection: "row",
