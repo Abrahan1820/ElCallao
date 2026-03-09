@@ -8,6 +8,7 @@ import {
   TouchableOpacity,
   Modal,
   FlatList,
+  SafeAreaView 
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import Constants from "expo-constants";
@@ -254,6 +255,7 @@ const MainMenu = () => {
   };
 
   return (
+    <SafeAreaView style={Styles.safeArea}>
     <LinearGradient
       colors={["#45c0e8", "#ffffff", "#ffffff"]}
       style={Styles.ContenedorGlobal}
@@ -419,6 +421,7 @@ const MainMenu = () => {
   </View>
 </Modal>
     </LinearGradient>
+    </SafeAreaView>
   );
 };
 
@@ -426,6 +429,7 @@ export default MainMenu;
 
 // 📌 Estilos para notificaciones
 const notificationStyles = StyleSheet.create({
+
   modalContainer: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.5)",
@@ -511,6 +515,10 @@ const notificationStyles = StyleSheet.create({
 
 // 📌 Estilos Generales (agregamos badge y headerRow)
 const Styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+    backgroundColor: '#45c0e8',
+  },
   settingsImg: {
     width: 30,
     height: 30,

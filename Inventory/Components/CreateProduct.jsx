@@ -38,6 +38,19 @@ const InputField = React.memo(({ label, icon, ...props }) => (
   </View>
 ));
 
+// Componente para mostrar stock como texto no editable
+const StockLabel = ({ label, icon, value }) => (
+  <View style={styles.inputWrapper}>
+    <View style={styles.labelContainer}>
+      <MaterialCommunityIcons name={icon} size={18} color="#45c0e8" />
+      <Text style={styles.labelText}>{label}</Text>
+    </View>
+    <View style={styles.stockLabelContainer}>
+      <Text style={styles.stockLabelText}>{value}</Text>
+    </View>
+  </View>
+);
+
 const CreateProduct = () => {
   const supa = SupaClient();
   const navigation = useNavigation();
@@ -58,11 +71,16 @@ const CreateProduct = () => {
   // 📌 Precios en USD
   const [precioCompraUSD, setPrecioCompraUSD] = useState(product?.precioCompraUSD ? String(product.precioCompraUSD) : "");
   const [precioVentaUSD, setPrecioVentaUSD] = useState(product?.precioVentaUSD ? String(product.precioVentaUSD) : "");
+  
+  // 📌 Precio congelado en Bs
+  const [precioCongelado, setPrecioCongelado] = useState(product?.precioCongelado);
+  const [tasaBCV, setTasaBCV] = useState(null);
+  const [precioVentaVESCalculado, setPrecioVentaVESCalculado] = useState(null);
 
   const [currentUser, setCurrentUser] = useState(null);
   const [empresaIdUser, setEmpresaIdUser] = useState(empresaId || null);
   
-  // Estados para dropdowns
+  // Estados para dropdowns - siguiendo el patrón de Login
   const [openCategoria, setOpenCategoria] = useState(false);
   const [itemsCategoria, setItemsCategoria] = useState([]);
   
@@ -79,10 +97,10 @@ const CreateProduct = () => {
     { label: "Paquete", value: "PAQUETE" },
   ]);
 
-  // Control de zIndex para dropdowns
-  const [zIndexCategoria, setZIndexCategoria] = useState(2000);
-  const [zIndexProveedor, setZIndexProveedor] = useState(1000);
-  const [zIndexUnidad, setZIndexUnidad] = useState(1500);
+  // Control de zIndex - similar a Login
+  const [zIndexCategoria, setZIndexCategoria] = useState(5000);
+  const [zIndexProveedor, setZIndexProveedor] = useState(4000);
+  const [zIndexUnidad, setZIndexUnidad] = useState(3000);
 
   // Funciones memoizadas para manejo de textos
   const handleNombreChange = useCallback((text) => {
@@ -121,6 +139,37 @@ const CreateProduct = () => {
     if (partes.length > 2) return;
     setPrecioVentaUSD(numeros);
   }, []);
+
+  // 📌 Cargar tasa BCV
+  useEffect(() => {
+    const loadTasaBCV = async () => {
+      try {
+        const { data, error } = await supa
+          .from("tasaBCV")
+          .select("precioVESUSD")
+          .eq("id", 1)
+          .single();
+
+        if (error) throw error;
+        setTasaBCV(data?.precioVESUSD || null);
+      } catch (error) {
+        console.error("Error cargando tasa BCV:", error);
+      }
+    };
+
+    loadTasaBCV();
+  }, []);
+
+  // 📌 Calcular precio en Bs cuando cambia precioVentaUSD, tasa o la opción de congelado
+  useEffect(() => {
+    if (precioCongelado === true && precioVentaUSD && tasaBCV) {
+      const precioUSD = parseFloat(precioVentaUSD) || 0;
+      const calculado = precioUSD * tasaBCV;
+      setPrecioVentaVESCalculado(calculado.toFixed(2));
+    } else {
+      setPrecioVentaVESCalculado(null);
+    }
+  }, [precioVentaUSD, tasaBCV, precioCongelado]);
 
   useEffect(() => {
     const verificarAcceso = async () => {
@@ -207,24 +256,24 @@ const CreateProduct = () => {
     loadProveedores();
   }, [empresaIdUser]);
 
-  // 📌 Manejar zIndex de dropdowns
+  // 📌 Manejar zIndex de dropdowns - similar a Login
   useEffect(() => {
     if (openCategoria) {
-      setZIndexCategoria(3000);
-      setZIndexProveedor(1000);
-      setZIndexUnidad(1000);
-    } else if (openProveedor) {
-      setZIndexCategoria(1000);
-      setZIndexProveedor(3000);
-      setZIndexUnidad(1000);
-    } else if (openUnidad) {
-      setZIndexCategoria(1000);
-      setZIndexProveedor(1000);
+      setZIndexCategoria(5000);
+      setZIndexProveedor(4000);
       setZIndexUnidad(3000);
+    } else if (openProveedor) {
+      setZIndexCategoria(4000);
+      setZIndexProveedor(5000);
+      setZIndexUnidad(3000);
+    } else if (openUnidad) {
+      setZIndexCategoria(4000);
+      setZIndexProveedor(3000);
+      setZIndexUnidad(5000);
     } else {
-      setZIndexCategoria(2000);
-      setZIndexProveedor(1000);
-      setZIndexUnidad(1500);
+      setZIndexCategoria(5000);
+      setZIndexProveedor(4000);
+      setZIndexUnidad(3000);
     }
   }, [openCategoria, openProveedor, openUnidad]);
 
@@ -257,6 +306,7 @@ const CreateProduct = () => {
       setProveedorID(product.proveedorID ? String(product.proveedorID) : "");
       setPrecioCompraUSD(product.precioCompraUSD ? String(product.precioCompraUSD) : "");
       setPrecioVentaUSD(product.precioVentaUSD ? String(product.precioVentaUSD) : "");
+      setPrecioCongelado(product.precioCongelado);
       setImagen(product.imagen || null);
     }
   }, [product]);
@@ -421,13 +471,14 @@ const CreateProduct = () => {
 
     try {
       if (product) {
+        // Actualizar producto existente (NO actualizar stockActual)
         const { error: updateError } = await supa
           .from("product")
           .update({
             nombre,
             descripcion: descripcion || null,
             categoriaID: categoriaID ? parseInt(categoriaID) : null,
-            stockActual: parseInt(stockActual) || 0,
+            // stockActual NO se actualiza aquí
             stockMinimo: parseInt(stockMinimo) || 0,
             stockMaximo: parseInt(stockMaximo) || 0,
             unidadMedida,
@@ -435,8 +486,8 @@ const CreateProduct = () => {
             imagen: isNewImage ? imageUrl : product.imagen,
             precioCompraUSD: parseFloat(precioCompraUSD) || 0,
             precioVentaUSD: parseFloat(precioVentaUSD) || 0,
-            precioCompraVES: 0,
-            precioVentaVES: 0,
+            precioCongelado: precioCongelado, // Guardar el valor del precio congelado
+            // precioCompraVES y precioVentaVES se actualizan con trigger
           })
           .eq("id", product.id);
 
@@ -452,6 +503,7 @@ const CreateProduct = () => {
 
         navigation.goBack();
       } else {
+        // Crear nuevo producto
         const { error: insertError } = await supa
           .from("product")
           .insert([
@@ -469,6 +521,7 @@ const CreateProduct = () => {
               imagen: imageUrl || null,
               precioCompraUSD: parseFloat(precioCompraUSD) || 0,
               precioVentaUSD: parseFloat(precioVentaUSD) || 0,
+              precioCongelado: precioCongelado, // Guardar el valor del precio congelado
               precioCompraVES: 0,
               precioVentaVES: 0,
             },
@@ -523,9 +576,6 @@ const CreateProduct = () => {
           keyboardShouldPersistTaps="handled"
         >
           <View style={styles.header}>
-            <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-              <MaterialCommunityIcons name="arrow-left" size={24} color="#45c0e8" />
-            </TouchableOpacity>
             <Text style={styles.title}>
               {product ? "Editar Producto" : "Nuevo Producto"}
             </Text>
@@ -565,46 +615,82 @@ const CreateProduct = () => {
             <Text style={styles.sectionTitle}>🏷️ Clasificación</Text>
             
             <View style={styles.rowContainer}>
-              <View style={[styles.halfWrapper, { zIndex: zIndexCategoria }]}>
+              {/* Categoría */}
+              <View
+                style={[
+                  styles.dropdownSection,
+                  {
+                    zIndex: zIndexCategoria,
+                    marginBottom: openCategoria ? 200 : 8,
+                  },
+                ]}
+              >
                 <View style={styles.labelContainer}>
                   <MaterialCommunityIcons name="folder" size={18} color="#45c0e8" />
                   <Text style={styles.labelText}>Categoría</Text>
                 </View>
-                <DropDownPicker
-                  open={openCategoria}
-                  value={categoriaID}
-                  items={itemsCategoria}
-                  setOpen={setOpenCategoria}
-                  setValue={setCategoriaID}
-                  setItems={setItemsCategoria}
-                  style={styles.dropdown}
-                  dropDownContainerStyle={styles.dropdownContainer}
-                  textStyle={styles.dropdownText}
-                  placeholder="Seleccionar categoría"
-                  placeholderStyle={styles.placeholderStyle}
-                  listMode="SCROLLVIEW"
-                />
+                <View style={styles.inputWrapper}>
+                  <View style={styles.dropdownInnerContainer}>
+                    <DropDownPicker
+                      open={openCategoria}
+                      value={categoriaID}
+                      items={itemsCategoria}
+                      setOpen={setOpenCategoria}
+                      setValue={setCategoriaID}
+                      setItems={setItemsCategoria}
+                      placeholder="Seleccionar categoría"
+                      style={styles.dropdownAligned}
+                      dropDownContainerStyle={styles.dropdownContainerAligned}
+                      textStyle={styles.dropdownTextAligned}
+                      placeholderStyle={styles.placeholderStyle}
+                      listMode="SCROLLVIEW"
+                      zIndex={zIndexCategoria}
+                      zIndexInverse={3000}
+                      dropDownDirection="BOTTOM"
+                      closeAfterSelecting={true}
+                      showTickIcon={true}
+                    />
+                  </View>
+                </View>
               </View>
 
-              <View style={[styles.halfWrapper, { zIndex: zIndexUnidad }]}>
+              {/* Unidad */}
+              <View
+                style={[
+                  styles.dropdownSection,
+                  {
+                    zIndex: zIndexUnidad,
+                    marginBottom: openUnidad ? 200 : 8,
+                  },
+                ]}
+              >
                 <View style={styles.labelContainer}>
                   <MaterialCommunityIcons name="scale" size={18} color="#45c0e8" />
-                  <Text style={styles.labelText}>Unidad de medida</Text>
+                  <Text style={styles.labelText}>Unidad</Text>
                 </View>
-                <DropDownPicker
-                  open={openUnidad}
-                  value={unidadMedida}
-                  items={itemsUnidad}
-                  setOpen={setOpenUnidad}
-                  setValue={setUnidadMedida}
-                  setItems={setItemsUnidad}
-                  style={styles.dropdown}
-                  dropDownContainerStyle={styles.dropdownContainer}
-                  textStyle={styles.dropdownText}
-                  placeholder="Seleccionar unidad"
-                  placeholderStyle={styles.placeholderStyle}
-                  listMode="SCROLLVIEW"
-                />
+                <View style={styles.inputWrapper}>
+                  <View style={styles.dropdownInnerContainer}>
+                    <DropDownPicker
+                      open={openUnidad}
+                      value={unidadMedida}
+                      items={itemsUnidad}
+                      setOpen={setOpenUnidad}
+                      setValue={setUnidadMedida}
+                      setItems={setItemsUnidad}
+                      placeholder="Seleccionar unidad"
+                      style={styles.dropdownAligned}
+                      dropDownContainerStyle={styles.dropdownContainerAligned}
+                      textStyle={styles.dropdownTextAligned}
+                      placeholderStyle={styles.placeholderStyle}
+                      listMode="SCROLLVIEW"
+                      zIndex={zIndexUnidad}
+                      zIndexInverse={3000}
+                      dropDownDirection="BOTTOM"
+                      closeAfterSelecting={true}
+                      showTickIcon={true}
+                    />
+                  </View>
+                </View>
               </View>
             </View>
 
@@ -612,20 +698,29 @@ const CreateProduct = () => {
             <Text style={styles.sectionTitle}>📊 Control de stock</Text>
             
             <View style={styles.rowContainer}>
-              <View style={styles.halfWrapper}>
-                <View style={styles.labelContainer}>
-                  <MaterialCommunityIcons name="package-variant" size={18} color="#45c0e8" />
-                  <Text style={styles.labelText}>Stock actual</Text>
-                </View>
-                <TextInput
-                  style={styles.input}
-                  placeholder="Ingrese cantidad"
-                  placeholderTextColor="#94a3b8"
+              {/* Stock actual - condicional según sea creación o edición */}
+              {product ? (
+                <StockLabel
+                  label="Stock actual"
+                  icon="package-variant"
                   value={stockActual}
-                  onChangeText={handleStockActualChange}
-                  keyboardType="numeric"
                 />
-              </View>
+              ) : (
+                <View style={styles.halfWrapper}>
+                  <View style={styles.labelContainer}>
+                    <MaterialCommunityIcons name="package-variant" size={18} color="#45c0e8" />
+                    <Text style={styles.labelText}>Stock actual</Text>
+                  </View>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="Ingrese cantidad"
+                    placeholderTextColor="#94a3b8"
+                    value={stockActual}
+                    onChangeText={handleStockActualChange}
+                    keyboardType="numeric"
+                  />
+                </View>
+              )}
 
               <View style={styles.halfWrapper}>
                 <View style={styles.labelContainer}>
@@ -659,25 +754,43 @@ const CreateProduct = () => {
                 />
               </View>
 
-              <View style={[styles.halfWrapper, { zIndex: zIndexProveedor }]}>
+              {/* Proveedor */}
+              <View
+                style={[
+                  styles.dropdownSection,
+                  {
+                    zIndex: zIndexProveedor,
+                    marginBottom: openProveedor ? 200 : 8,
+                  },
+                ]}
+              >
                 <View style={styles.labelContainer}>
                   <MaterialCommunityIcons name="truck" size={18} color="#45c0e8" />
                   <Text style={styles.labelText}>Proveedor</Text>
                 </View>
-                <DropDownPicker
-                  open={openProveedor}
-                  value={proveedorID}
-                  items={itemsProveedor}
-                  setOpen={setOpenProveedor}
-                  setValue={setProveedorID}
-                  setItems={setItemsProveedor}
-                  style={styles.dropdown}
-                  dropDownContainerStyle={styles.dropdownContainer}
-                  textStyle={styles.dropdownText}
-                  placeholder="Seleccionar proveedor"
-                  placeholderStyle={styles.placeholderStyle}
-                  listMode="SCROLLVIEW"
-                />
+                <View style={styles.inputWrapper}>
+                  <View style={styles.dropdownInnerContainer}>
+                    <DropDownPicker
+                      open={openProveedor}
+                      value={proveedorID}
+                      items={itemsProveedor}
+                      setOpen={setOpenProveedor}
+                      setValue={setProveedorID}
+                      setItems={setItemsProveedor}
+                      placeholder="Seleccionar proveedor"
+                      style={styles.dropdownAligned}
+                      dropDownContainerStyle={styles.dropdownContainerAligned}
+                      textStyle={styles.dropdownTextAligned}
+                      placeholderStyle={styles.placeholderStyle}
+                      listMode="SCROLLVIEW"
+                      zIndex={zIndexProveedor}
+                      zIndexInverse={3000}
+                      dropDownDirection="BOTTOM"
+                      closeAfterSelecting={true}
+                      showTickIcon={true}
+                    />
+                  </View>
+                </View>
               </View>
             </View>
 
@@ -688,7 +801,7 @@ const CreateProduct = () => {
               <View style={styles.halfWrapper}>
                 <View style={styles.labelContainer}>
                   <MaterialCommunityIcons name="currency-usd" size={18} color="#45c0e8" />
-                  <Text style={styles.labelText}>Precio de compra</Text>
+                  <Text style={styles.labelText}>Precio compra</Text>
                 </View>
                 <TextInput
                   style={styles.input}
@@ -703,7 +816,7 @@ const CreateProduct = () => {
               <View style={styles.halfWrapper}>
                 <View style={styles.labelContainer}>
                   <MaterialCommunityIcons name="cash" size={18} color="#45c0e8" />
-                  <Text style={styles.labelText}>Precio de venta</Text>
+                  <Text style={styles.labelText}>Precio venta</Text>
                 </View>
                 <TextInput
                   style={styles.input}
@@ -714,6 +827,69 @@ const CreateProduct = () => {
                   keyboardType="numeric"
                 />
               </View>
+            </View>
+
+            {/* Precio Congelado en Bs */}
+            <Text style={styles.sectionTitle}>🔒 Precio en Bolívares</Text>
+            
+            <View style={styles.precioCongeladoContainer}>
+              <View style={styles.labelContainer}>
+                <MaterialCommunityIcons name="lock" size={18} color="#45c0e8" />
+                <Text style={styles.labelText}>¿Este precio se congela en Bs?</Text>
+              </View>
+              
+              <View style={styles.precioCongeladoButtons}>
+                <TouchableOpacity
+                  style={[
+                    styles.precioCongeladoButton,
+                    precioCongelado === true && styles.precioCongeladoButtonActive
+                  ]}
+                  onPress={() => setPrecioCongelado(true)}
+                >
+                  <Text style={[
+                    styles.precioCongeladoButtonText,
+                    precioCongelado === true && styles.precioCongeladoButtonTextActive
+                  ]}>Sí</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[
+                    styles.precioCongeladoButton,
+                    precioCongelado === false && styles.precioCongeladoButtonActive
+                  ]}
+                  onPress={() => setPrecioCongelado(false)}
+                >
+                  <Text style={[
+                    styles.precioCongeladoButtonText,
+                    precioCongelado === false && styles.precioCongeladoButtonTextActive
+                  ]}>No</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[
+                    styles.precioCongeladoButton,
+                    precioCongelado === null && styles.precioCongeladoButtonActive
+                  ]}
+                  onPress={() => setPrecioCongelado(null)}
+                >
+                  <Text style={[
+                    styles.precioCongeladoButtonText,
+                    precioCongelado === null && styles.precioCongeladoButtonTextActive
+                  ]}>Vacío</Text>
+                </TouchableOpacity>
+              </View>
+
+              {precioCongelado === true && precioVentaVESCalculado && (
+                <View style={styles.precioCalculadoContainer}>
+                  <MaterialCommunityIcons name="calculator" size={20} color="#27ae60" />
+                  <Text style={styles.precioCalculadoText}>
+                    Precio en Bs: Bs. {precioVentaVESCalculado}
+                  </Text>
+                  <Text style={styles.precioCalculadoSubtext}>
+                    (Tasa BCV: Bs. {tasaBCV?.toFixed(2)} por USD)
+                  </Text>
+                </View>
+              )}
             </View>
 
             {/* Imagen */}
@@ -787,19 +963,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginBottom: 20,
   },
-  backButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: "white",
-    alignItems: "center",
-    justifyContent: "center",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
   title: {
     fontSize: 20,
     fontWeight: "700",
@@ -859,26 +1022,107 @@ const styles = StyleSheet.create({
     flex: 1,
     marginBottom: 8,
   },
-  dropdown: {
-    borderWidth: 1,
-    borderColor: "#e2e8f0",
-    borderRadius: 12,
-    backgroundColor: "#f8fafc",
-    minHeight: 50,
+  dropdownSection: {
+    flex: 1,
+    marginBottom: 8,
   },
-  dropdownContainer: {
-    borderWidth: 1,
-    borderColor: "#e2e8f0",
+  dropdownInnerContainer: {
+    flex: 1,
+  },
+  dropdownAligned: {
+    borderWidth: 0,
+    backgroundColor: 'transparent',
+    height: 50,
+    paddingLeft: 0,
+  },
+  dropdownContainerAligned: {
+    borderColor: '#e2e8f0',
     borderRadius: 12,
+    borderWidth: 1.5,
     marginTop: 4,
+    zIndex: 5000,
+    elevation: 5000,
+    width: '100%',
   },
-  dropdownText: {
+  dropdownTextAligned: {
+    color: '#1e293b',
     fontSize: 14,
-    color: "#1e293b",
+    fontWeight: '500',
+    paddingLeft: 0,
   },
   placeholderStyle: {
-    color: "#94a3b8",
+    color: '#94a3b8',
     fontSize: 14,
+  },
+  stockLabelContainer: {
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+    borderRadius: 12,
+    padding: 14,
+    backgroundColor: "#f1f5f9",
+    justifyContent: "center",
+  },
+  stockLabelText: {
+    fontSize: 14,
+    color: "#1e293b",
+    fontWeight: "600",
+  },
+  // Nuevos estilos para precio congelado
+  precioCongeladoContainer: {
+    marginBottom: 20,
+    backgroundColor: "#f8fafc",
+    borderRadius: 12,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+  },
+  precioCongeladoButtons: {
+    flexDirection: "row",
+    gap: 10,
+    marginTop: 8,
+    marginBottom: 12,
+  },
+  precioCongeladoButton: {
+    flex: 1,
+    paddingVertical: 12,
+    paddingHorizontal: 8,
+    borderRadius: 8,
+    backgroundColor: "#f1f5f9",
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+    alignItems: "center",
+  },
+  precioCongeladoButtonActive: {
+    backgroundColor: "#45c0e8",
+    borderColor: "#45c0e8",
+  },
+  precioCongeladoButtonText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#64748b",
+  },
+  precioCongeladoButtonTextActive: {
+    color: "white",
+  },
+  precioCalculadoContainer: {
+    marginTop: 12,
+    padding: 12,
+    backgroundColor: "#e8f5e9",
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#27ae60",
+    alignItems: "center",
+  },
+  precioCalculadoText: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#27ae60",
+    marginTop: 4,
+  },
+  precioCalculadoSubtext: {
+    fontSize: 12,
+    color: "#64748b",
+    marginTop: 2,
   },
   imageButtons: {
     flexDirection: "row",

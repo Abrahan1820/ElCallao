@@ -9,7 +9,6 @@ import {
   StatusBar,
   ActivityIndicator,
   TextInput,
-  Alert,
   Modal,
 } from "react-native";
 import { SupaClient } from "../../Supabase/supabase";
@@ -19,6 +18,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useNavigation } from "@react-navigation/native";
 import ProductSelectionModal from "./ProductSelectionModal";
+import Toast from 'react-native-toast-message';
 
 const PurchaseScreen = () => {
   const navigation = useNavigation();
@@ -52,6 +52,19 @@ const PurchaseScreen = () => {
   const [searchText, setSearchText] = useState("");
   const [selectedCategoria, setSelectedCategoria] = useState("todas");
   const [categoriasExpandidas, setCategoriasExpandidas] = useState(false);
+
+  // Función helper para mostrar toasts
+  const showToast = (type, title, message) => {
+    Toast.show({
+      type: type,
+      text1: title,
+      text2: message,
+      position: 'top',
+      visibilityTime: 3000,
+      autoHide: true,
+      topOffset: 50,
+    });
+  };
 
   // Cargar datos iniciales
   const loadAllData = async () => {
@@ -91,7 +104,7 @@ const PurchaseScreen = () => {
       setProveedores(proveedoresData || []);
     } catch (err) {
       console.error(err);
-      Alert.alert("Error", "No se pudieron cargar los datos");
+      showToast('error', 'Error', 'No se pudieron cargar los datos');
     } finally {
       setLoading(false);
     }
@@ -120,6 +133,7 @@ const PurchaseScreen = () => {
       setCategorias(lista);
     } catch (error) {
       console.error("❌ Error cargando categorías:", error);
+      showToast('error', 'Error', 'No se pudieron cargar las categorías');
     }
   };
 
@@ -201,8 +215,10 @@ const PurchaseScreen = () => {
             : item
         )
       );
+      showToast('success', 'Producto agregado', `Se agregaron ${quantity} unidades más de ${product.nombre}`);
     } else {
       setPurchaseItems([...purchaseItems, { ...product, quantity }]);
+      showToast('success', 'Producto agregado', `${product.nombre} agregado a la compra`);
     }
 
     setQuantityModalVisible(false);
@@ -211,7 +227,9 @@ const PurchaseScreen = () => {
 
   // Eliminar producto de la compra
   const removeItem = (productId) => {
+    const product = purchaseItems.find(item => item.id === productId);
     setPurchaseItems(purchaseItems.filter(item => item.id !== productId));
+    showToast('info', 'Producto eliminado', `${product?.nombre} fue eliminado de la compra`);
   };
 
   // Actualizar cantidad de un producto
@@ -230,12 +248,12 @@ const PurchaseScreen = () => {
   // Finalizar compra
   const finalizePurchase = async () => {
     if (purchaseItems.length === 0) {
-      Alert.alert("Error", "No hay productos en la compra");
+      showToast('error', 'Error', 'No hay productos en la compra');
       return;
     }
 
     if (!selectedProveedor) {
-      Alert.alert("Error", "Selecciona un proveedor");
+      showToast('error', 'Error', 'Selecciona un proveedor');
       return;
     }
 
@@ -244,73 +262,83 @@ const PurchaseScreen = () => {
     );
     const proveedorNombre = proveedor ? proveedor.nombre : "Proveedor desconocido";
 
-    Alert.alert(
-      "Confirmar compra",
-      `¿Registrar esta compra?\n\nProveedor: ${proveedorNombre}\nTotal USD: $${totalCostUSD.toFixed(2)}\nTotal VES: Bs. ${totalCostVES.toFixed(2)}`,
-      [
-        { text: "Cancelar", style: "cancel" },
-        {
-          text: "Confirmar",
-          onPress: async () => {
-            setProcessing(true);
-            try {
-              for (const item of purchaseItems) {
-                // Obtener stock actual
-                const { data: currentProduct, error: fetchError } = await supa
-                  .from("product")
-                  .select("stockActual")
-                  .eq("id", item.id)
-                  .single();
+    // Usar Toast de confirmación personalizado
+    Toast.show({
+      type: 'customConfirm',
+      text1: 'Confirmar compra',
+      text2: `Proveedor: ${proveedorNombre}\nTotal USD: $${totalCostUSD.toFixed(2)}\nTotal VES: Bs. ${totalCostVES.toFixed(2)}`,
+      props: {
+        buttons: [
+          {
+            text: 'Cancelar',
+            onPress: () => Toast.hide(),
+            style: { color: '#64748b' },
+          },
+          {
+            text: 'Confirmar',
+            onPress: async () => {
+              Toast.hide();
+              setProcessing(true);
+              try {
+                for (const item of purchaseItems) {
+                  // Obtener stock actual
+                  const { data: currentProduct, error: fetchError } = await supa
+                    .from("product")
+                    .select("stockActual")
+                    .eq("id", item.id)
+                    .single();
 
-                if (fetchError) throw fetchError;
+                  if (fetchError) throw fetchError;
 
-                // Actualizar stock
-                const newStock = currentProduct.stockActual + item.quantity;
+                  // Actualizar stock
+                  const newStock = currentProduct.stockActual + item.quantity;
+                  
+                  const { error: updateError } = await supa
+                    .from("product")
+                    .update({ stockActual: newStock })
+                    .eq("id", item.id);
+
+                  if (updateError) throw updateError;
+
+                  // Crear movimiento de entrada
+                  const { error: movementError } = await supa
+                    .from("productMovement")
+                    .insert({
+                      productoID: item.id,
+                      tipoMovimiento: "entrada",
+                      cantidad: item.quantity,
+                      precioCompraUSD: item.precioCompraUSD,
+                      precioVentaUSD: item.precioVentaUSD,
+                      precioCompraVES: item.precioCompraVES,
+                      precioVentaVES: item.precioVentaVES,
+                      empresaID: empresaId,
+                      tipoTransaccion: "Compra",
+                      observaciones: `Compra de ${proveedorNombre} - ${observations}`,
+                      usuarioCedula: userData?.cedula
+                    });
+
+                  if (movementError) throw movementError;
+                }
+
+                // Limpiar todo
+                setPurchaseItems([]);
+                setSelectedProveedor(null);
+                setObservations("");
                 
-                const { error: updateError } = await supa
-                  .from("product")
-                  .update({ stockActual: newStock })
-                  .eq("id", item.id);
+                showToast('success', 'Éxito', 'Compra registrada correctamente');
 
-                if (updateError) throw updateError;
-
-                // Crear movimiento de entrada
-                const { error: movementError } = await supa
-                  .from("productMovement")
-                  .insert({
-                    productoID: item.id,
-                    tipoMovimiento: "entrada",
-                    cantidad: item.quantity,
-                    precioCompraUSD: item.precioCompraUSD,
-                    precioVentaUSD: item.precioVentaUSD,
-                    precioCompraVES: item.precioCompraVES,
-                    precioVentaVES: item.precioVentaVES,
-                    empresaID: empresaId,
-                    tipoTransaccion: "Compra",
-                    observaciones: `Compra de ${proveedorNombre} - ${observations}`,
-                    usuarioCedula: userData?.cedula
-                  });
-
-                if (movementError) throw movementError;
+              } catch (error) {
+                console.error("Error:", error);
+                showToast('error', 'Error', 'No se pudo registrar la compra');
+              } finally {
+                setProcessing(false);
               }
-
-              // Limpiar todo
-              setPurchaseItems([]);
-              setSelectedProveedor(null);
-              setObservations("");
-              
-              Alert.alert("Éxito", "Compra registrada correctamente");
-
-            } catch (error) {
-              console.error("Error:", error);
-              Alert.alert("Error", "No se pudo registrar la compra");
-            } finally {
-              setProcessing(false);
-            }
-          }
-        }
-      ]
-    );
+            },
+            style: { color: '#27ae60', fontWeight: 'bold' },
+          },
+        ],
+      },
+    });
   };
 
   if (loading) {

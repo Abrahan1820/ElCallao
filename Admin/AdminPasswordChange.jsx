@@ -6,6 +6,7 @@ import {
   TouchableOpacity,
   Alert,
   StyleSheet,
+  SafeAreaView
 } from "react-native";
 import { SupaClient } from "../Supabase/supabase";
 import NavBar from "../NavBar/Components/NavBar";
@@ -191,7 +192,7 @@ const AdminPasswordChange = () => {
   };
 
   return (
-    <View style={styles.grande}>
+    <SafeAreaView style={styles.safeArea}>
       <NavBar />
       <View style={styles.container}>
         <Text style={styles.title}>Cambiar Clave de Administrador</Text>
@@ -223,7 +224,7 @@ const AdminPasswordChange = () => {
           </TouchableOpacity>
         </View>
       </View>
-    </View>
+    </SafeAreaView>
   );
 };
 
@@ -231,6 +232,10 @@ export default AdminPasswordChange;
 
 // 📌 Estilos actualizados
 const styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+    backgroundColor: '#45c0e8',
+  },
   grande: {
     flex: 1,
     backgroundColor: "#ffffff",
@@ -238,6 +243,7 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     padding: 40,
+    backgroundColor: '#ffffff'
   },
   title: {
     fontSize: 22,

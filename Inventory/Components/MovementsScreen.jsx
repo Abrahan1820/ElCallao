@@ -274,24 +274,32 @@ const MovementsScreen = () => {
     });
   };
 
-  const getTransactionAmount = (movement) => {
-    switch (movement.tipoTransaccion) {
-      case 'Debito':
-        return `Bs. ${movement.precioVentaVES?.toFixed(2) || '0.00'}`;
-      case 'Efectivo USD':
-        return `$${movement.precioVentaUSD?.toFixed(2) || '0.00'}`;
-      case 'Efectivo VES':
-        return `Bs. ${movement.precioVentaVESEfectivo?.toFixed(2) || '0.00'}`;
-      case 'Mixto':
-        const partes = [];
-        if (movement.precioVentaUSD > 0) partes.push(`$${movement.precioVentaUSD.toFixed(2)}`);
-        if (movement.precioVentaVES > 0) partes.push(`Bs.${movement.precioVentaVES.toFixed(2)} (D)`);
-        if (movement.precioVentaVESEfectivo > 0) partes.push(`Bs.${movement.precioVentaVESEfectivo.toFixed(2)} (E)`);
-        return partes.join(' + ');
-      default:
-        return 'Monto no disponible';
-    }
-  };
+const getTransactionAmount = (movement) => {
+  switch (movement.tipoTransaccion) {
+    case 'Debito':
+      return `Bs. ${movement.precioVentaVES?.toFixed(2) || '0.00'}`;
+    case 'Pago Movil': // NUEVO: Manejar pago móvil
+    case 'PagoMóvil':
+    case 'PagoMovil':
+      return `Bs. ${movement.precioVentaVES?.toFixed(2) || '0.00'} (Ref: ${movement.pagoMovil || '****'})`;
+    case 'Efectivo USD':
+      return `$${movement.precioVentaUSD?.toFixed(2) || '0.00'}`;
+    case 'Efectivo VES':
+      return `Bs. ${movement.precioVentaVESEfectivo?.toFixed(2) || '0.00'}`;
+    case 'Efectivo BS': // Por si acaso también manejas este
+      return `Bs. ${movement.precioVentaVESEfectivo?.toFixed(2) || '0.00'}`;
+    case 'Mixto':
+      const partes = [];
+      if (movement.precioVentaUSD > 0) partes.push(`$${movement.precioVentaUSD.toFixed(2)}`);
+      if (movement.precioVentaVES > 0) partes.push(`Bs.${movement.precioVentaVES.toFixed(2)} (D)`);
+      if (movement.precioVentaVESEfectivo > 0) partes.push(`Bs.${movement.precioVentaVESEfectivo.toFixed(2)} (E)`);
+      return partes.join(' + ') || 'Monto no disponible';
+    default:
+      // Debug: mostrar qué tipo de transacción está llegando
+      console.log('Tipo de transacción no manejado:', movement.tipoTransaccion);
+      return 'Monto no disponible';
+  }
+};
 
   const PeriodoBoton = ({ periodo, label, icon }) => (
     <TouchableOpacity
@@ -392,91 +400,112 @@ const MovementsScreen = () => {
           </View>
 
           {/* Filtros de tipo y transacción */}
-          <View style={styles.filtersContainer}>
-            <Text style={styles.filterTitle}>Filtrar por tipo:</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-              <TouchableOpacity
-                style={[styles.filterChip, selectedTipo === "todos" && styles.filterChipActive]}
-                onPress={() => setSelectedTipo("todos")}
-              >
-                <Text style={[styles.filterChipText, selectedTipo === "todos" && styles.filterChipTextActive]}>
-                  Todos
-                </Text>
-              </TouchableOpacity>
-              
-              <TouchableOpacity
-                style={[styles.filterChip, selectedTipo === "entrada" && styles.filterChipActive]}
-                onPress={() => setSelectedTipo("entrada")}
-              >
-                <MaterialCommunityIcons name="arrow-down" size={16} color={selectedTipo === "entrada" ? "white" : "#27ae60"} />
-                <Text style={[styles.filterChipText, selectedTipo === "entrada" && styles.filterChipTextActive]}>
-                  Entradas
-                </Text>
-              </TouchableOpacity>
-              
-              <TouchableOpacity
-                style={[styles.filterChip, selectedTipo === "salida" && styles.filterChipActive]}
-                onPress={() => setSelectedTipo("salida")}
-              >
-                <MaterialCommunityIcons name="arrow-up" size={16} color={selectedTipo === "salida" ? "white" : "#e74c3c"} />
-                <Text style={[styles.filterChipText, selectedTipo === "salida" && styles.filterChipTextActive]}>
-                  Salidas
-                </Text>
-              </TouchableOpacity>
-              
-              <TouchableOpacity
-                style={[styles.filterChip, selectedTipo === "ajuste" && styles.filterChipActive]}
-                onPress={() => setSelectedTipo("ajuste")}
-              >
-                <MaterialCommunityIcons name="sync" size={16} color={selectedTipo === "ajuste" ? "white" : "#f39c12"} />
-                <Text style={[styles.filterChipText, selectedTipo === "ajuste" && styles.filterChipTextActive]}>
-                  Ajustes
-                </Text>
-              </TouchableOpacity>
-            </ScrollView>
+<View style={styles.filtersContainer}>
+  <Text style={styles.filterTitle}>Filtrar por tipo:</Text>
+  <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+    <TouchableOpacity
+      style={[styles.filterChip, selectedTipo === "todos" && styles.filterChipActive]}
+      onPress={() => setSelectedTipo("todos")}
+    >
+      <Text style={[styles.filterChipText, selectedTipo === "todos" && styles.filterChipTextActive]}>
+        Todos
+      </Text>
+    </TouchableOpacity>
+    
+    <TouchableOpacity
+      style={[styles.filterChip, selectedTipo === "entrada" && styles.filterChipActive]}
+      onPress={() => setSelectedTipo("entrada")}
+    >
+      <MaterialCommunityIcons name="arrow-down" size={16} color={selectedTipo === "entrada" ? "white" : "#27ae60"} />
+      <Text style={[styles.filterChipText, selectedTipo === "entrada" && styles.filterChipTextActive]}>
+        Entradas
+      </Text>
+    </TouchableOpacity>
+    
+    <TouchableOpacity
+      style={[styles.filterChip, selectedTipo === "salida" && styles.filterChipActive]}
+      onPress={() => setSelectedTipo("salida")}
+    >
+      <MaterialCommunityIcons name="arrow-up" size={16} color={selectedTipo === "salida" ? "white" : "#e74c3c"} />
+      <Text style={[styles.filterChipText, selectedTipo === "salida" && styles.filterChipTextActive]}>
+        Salidas
+      </Text>
+    </TouchableOpacity>
+    
+    <TouchableOpacity
+      style={[styles.filterChip, selectedTipo === "ajuste" && styles.filterChipActive]}
+      onPress={() => setSelectedTipo("ajuste")}
+    >
+      <MaterialCommunityIcons name="sync" size={16} color={selectedTipo === "ajuste" ? "white" : "#f39c12"} />
+      <Text style={[styles.filterChipText, selectedTipo === "ajuste" && styles.filterChipTextActive]}>
+        Ajustes
+      </Text>
+    </TouchableOpacity>
+  </ScrollView>
 
-            <Text style={[styles.filterTitle, { marginTop: 10 }]}>Forma de pago:</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-              <TouchableOpacity
-                style={[styles.filterChip, selectedTransaccion === "todos" && styles.filterChipActive]}
-                onPress={() => setSelectedTransaccion("todos")}
-              >
-                <Text style={[styles.filterChipText, selectedTransaccion === "todos" && styles.filterChipTextActive]}>
-                  Todos
-                </Text>
-              </TouchableOpacity>
-              
-              <TouchableOpacity
-                style={[styles.filterChip, selectedTransaccion === "Debito" && styles.filterChipActive]}
-                onPress={() => setSelectedTransaccion("Debito")}
-              >
-                <MaterialCommunityIcons name="credit-card" size={16} color={selectedTransaccion === "Debito" ? "white" : "#3498db"} />
-                <Text style={[styles.filterChipText, selectedTransaccion === "Debito" && styles.filterChipTextActive]}>
-                  Débito
-                </Text>
-              </TouchableOpacity>
-              
-              <TouchableOpacity
-                style={[styles.filterChip, selectedTransaccion === "Efectivo BS" && styles.filterChipActive]}
-                onPress={() => setSelectedTransaccion("Efectivo BS")}
-              >
-                <MaterialCommunityIcons name="cash" size={16} color={selectedTransaccion === "Efectivo BS" ? "white" : "#27ae60"} />
-                <Text style={[styles.filterChipText, selectedTransaccion === "Efectivo BS" && styles.filterChipTextActive]}>
-                  Efectivo BS
-                </Text>
-              </TouchableOpacity>
-              
-              <TouchableOpacity
-                style={[styles.filterChip, selectedTransaccion === "Efectivo USD" && styles.filterChipActive]}
-                onPress={() => setSelectedTransaccion("Efectivo USD")}
-              >
-                <MaterialCommunityIcons name="cash-usd" size={16} color={selectedTransaccion === "Efectivo USD" ? "white" : "#f39c12"} />
-                <Text style={[styles.filterChipText, selectedTransaccion === "Efectivo USD" && styles.filterChipTextActive]}>
-                  Efectivo USD
-                </Text>
-              </TouchableOpacity>
-            </ScrollView>
-          </View>
+  <Text style={[styles.filterTitle, { marginTop: 10 }]}>Forma de pago:</Text>
+  <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+    <TouchableOpacity
+      style={[styles.filterChip, selectedTransaccion === "todos" && styles.filterChipActive]}
+      onPress={() => setSelectedTransaccion("todos")}
+    >
+      <Text style={[styles.filterChipText, selectedTransaccion === "todos" && styles.filterChipTextActive]}>
+        Todos
+      </Text>
+    </TouchableOpacity>
+    
+    <TouchableOpacity
+      style={[styles.filterChip, selectedTransaccion === "Debito" && styles.filterChipActive]}
+      onPress={() => setSelectedTransaccion("Debito")}
+    >
+      <MaterialCommunityIcons name="credit-card" size={16} color={selectedTransaccion === "Debito" ? "white" : "#3498db"} />
+      <Text style={[styles.filterChipText, selectedTransaccion === "Debito" && styles.filterChipTextActive]}>
+        Débito
+      </Text>
+    </TouchableOpacity>
+    
+    {/* NUEVO: Filtro para Pago Móvil */}
+    <TouchableOpacity
+      style={[styles.filterChip, selectedTransaccion === "Pago Movil" && styles.filterChipActive]}
+      onPress={() => setSelectedTransaccion("Pago Movil")}
+    >
+      <MaterialCommunityIcons name="cellphone" size={16} color={selectedTransaccion === "Pago Movil" ? "white" : "#9b59b6"} />
+      <Text style={[styles.filterChipText, selectedTransaccion === "Pago Movil" && styles.filterChipTextActive]}>
+        Pago Móvil
+      </Text>
+    </TouchableOpacity>
+    
+    <TouchableOpacity
+      style={[styles.filterChip, selectedTransaccion === "Efectivo BS" && styles.filterChipActive]}
+      onPress={() => setSelectedTransaccion("Efectivo BS")}
+    >
+      <MaterialCommunityIcons name="cash" size={16} color={selectedTransaccion === "Efectivo BS" ? "white" : "#27ae60"} />
+      <Text style={[styles.filterChipText, selectedTransaccion === "Efectivo BS" && styles.filterChipTextActive]}>
+        Efectivo BS
+      </Text>
+    </TouchableOpacity>
+    
+    <TouchableOpacity
+      style={[styles.filterChip, selectedTransaccion === "Efectivo USD" && styles.filterChipActive]}
+      onPress={() => setSelectedTransaccion("Efectivo USD")}
+    >
+      <MaterialCommunityIcons name="cash-usd" size={16} color={selectedTransaccion === "Efectivo USD" ? "white" : "#f39c12"} />
+      <Text style={[styles.filterChipText, selectedTransaccion === "Efectivo USD" && styles.filterChipTextActive]}>
+        Efectivo USD
+      </Text>
+    </TouchableOpacity>
+    
+    <TouchableOpacity
+      style={[styles.filterChip, selectedTransaccion === "Mixto" && styles.filterChipActive]}
+      onPress={() => setSelectedTransaccion("Mixto")}
+    >
+      <MaterialCommunityIcons name="swap-horizontal" size={16} color={selectedTransaccion === "Mixto" ? "white" : "#e67e22"} />
+      <Text style={[styles.filterChipText, selectedTransaccion === "Mixto" && styles.filterChipTextActive]}>
+        Mixto
+      </Text>
+    </TouchableOpacity>
+  </ScrollView>
+</View>
 
           {/* Lista de movimientos */}
           <View style={styles.movementsContainer}>

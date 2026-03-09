@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { View, Text, TouchableOpacity, StyleSheet, Alert } from "react-native";
+import { View, Text, TouchableOpacity, StyleSheet, Alert, SafeAreaView } from "react-native";
 import { useNavigation } from "@react-navigation/native";
 import NavBar from "../NavBar/Components/NavBar";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -107,7 +107,7 @@ const AdminPanel = () => {
   };
 
   return (
-    <View style={styles.grande}>
+    <SafeAreaView style={styles.safeArea}>
       <NavBar />
       <View style={styles.container}>
         <Text style={styles.title}>Panel de Administración</Text>
@@ -140,12 +140,16 @@ const AdminPanel = () => {
           <Text style={styles.optionText}>Cambiar Clave Administrador</Text>
         </TouchableOpacity>
       </View>
-    </View>
+    </SafeAreaView>
   );
 };
 
 // 📌 Estilos
 const styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+    backgroundColor: "#45c0e8",
+  },  
   grande: { flex: 1 },
   container: {
     flex: 1,

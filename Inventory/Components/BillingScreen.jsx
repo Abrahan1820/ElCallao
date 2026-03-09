@@ -8,7 +8,6 @@ import {
   SafeAreaView,
   StatusBar,
   TextInput,
-  Alert,
   ActivityIndicator,
   Modal,
 } from "react-native";
@@ -20,6 +19,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useNavigation, useFocusEffect } from "@react-navigation/native";
 import ProductSelectionModal from "./ProductSelectionModal";
 import PaymentMethodModal from "./PaymentMethodModal";
+import Toast from "react-native-toast-message";
 
 const BillingScreen = () => {
   const navigation = useNavigation();
@@ -46,6 +46,7 @@ const BillingScreen = () => {
   
   // Estados para método de pago
   const [paymentMethod, setPaymentMethod] = useState(null);
+  const [pagoMovilRef, setPagoMovilRef] = useState("");
   const [mixedPayment, setMixedPayment] = useState({
     usd: "",
     ves: "",
@@ -55,33 +56,27 @@ const BillingScreen = () => {
   // Resumen de factura (solo monto del producto, sin IVA)
   const [subtotalUSD, setSubtotalUSD] = useState(0);
   const [subtotalVES, setSubtotalVES] = useState(0);
-  // Agrega este estado junto a los demás estados
-const [TASA_CAMBIO, setTASA_CAMBIO] = useState(60); // Valor por defecto mientras carga
+  const [TASA_CAMBIO, setTASA_CAMBIO] = useState(60);
 
-// Agrega esta función para cargar la tasa del BCV
-const loadTasaBCV = async () => {
-  try {
-    const { data, error } = await supa
-      .from("tasaBCV")
-      .select("precioVESUSD")
-      .eq("id", 1)
-      .single();
+  // Cargar tasa del BCV
+  const loadTasaBCV = async () => {
+    try {
+      const { data, error } = await supa
+        .from("tasaBCV")
+        .select("precioVESUSD")
+        .eq("id", 1)
+        .single();
 
-    if (error) throw error;
-    
-    if (data) {
-      // El campo se llama "precioVES/USD" - puede tener un nombre especial
-      // Dependiendo de cómo se llame exactamente en tu BD
-      const tasa = data["precioVESUSD"];
-      setTASA_CAMBIO(tasa || 60);
+      if (error) throw error;
+      
+      if (data) {
+        const tasa = data["precioVESUSD"];
+        setTASA_CAMBIO(tasa || 60);
+      }
+    } catch (error) {
+      console.error("Error cargando tasa BCV:", error);
     }
-  } catch (error) {
-    console.error("Error cargando tasa BCV:", error);
-    // Mantener valor por defecto si hay error
-  }
-};
-
- 
+  };
 
   // -----------------------------
   // 👤 Obtener usuario desde AsyncStorage
@@ -134,6 +129,13 @@ const loadTasaBCV = async () => {
       setCategorias(lista);
     } catch (error) {
       console.error("❌ Error cargando categorías:", error);
+      Toast.show({
+        type: "error",
+        text1: "Error",
+        text2: "No se pudieron cargar las categorías",
+        position: "top",
+        visibilityTime: 3000,
+      });
     }
   };
 
@@ -150,7 +152,6 @@ const loadTasaBCV = async () => {
         .eq("empresaID", empId)
         .eq("esActivo", true);
       
-      // Aplicar filtro por categoría si no es "todas"
       if (selectedCategoria !== "todas") {
         query = query.eq("categoriaID", selectedCategoria);
       }
@@ -161,6 +162,13 @@ const loadTasaBCV = async () => {
       return data || [];
     } catch (error) {
       console.error("❌ Error cargando productos:", error);
+      Toast.show({
+        type: "error",
+        text1: "Error",
+        text2: "No se pudieron cargar los productos",
+        position: "top",
+        visibilityTime: 3000,
+      });
       return [];
     }
   };
@@ -173,14 +181,26 @@ const loadTasaBCV = async () => {
     try {
       const user = await getUserFromStorage();
       if (!user) {
-        Alert.alert("Error", "No hay usuario en sesión");
+        Toast.show({
+          type: "error",
+          text1: "Sesión expirada",
+          text2: "Por favor inicie sesión nuevamente",
+          position: "top",
+          visibilityTime: 3000,
+        });
         navigation.navigate("Log_in");
         return;
       }
 
       const empId = await getEmpresaIdFromUser(user);
       if (!empId) {
-        Alert.alert("Error", "No se pudo determinar la empresa del usuario");
+        Toast.show({
+          type: "error",
+          text1: "Error",
+          text2: "No se pudo determinar la empresa del usuario",
+          position: "top",
+          visibilityTime: 3000,
+        });
         return;
       }
       
@@ -189,13 +209,19 @@ const loadTasaBCV = async () => {
       await loadTasaBCV();
       const productsData = await fetchProducts(user.empresaID);
       
-      // Filtrar productos con stock > 0
       const availableProducts = productsData.filter(p => p.stockActual > 0);
       setProducts(availableProducts);
       setFilteredProducts(availableProducts);
       
     } catch (error) {
       console.error("Error cargando datos:", error);
+      Toast.show({
+        type: "error",
+        text1: "Error",
+        text2: "Ocurrió un problema al cargar los datos",
+        position: "top",
+        visibilityTime: 3000,
+      });
     } finally {
       setLoading(false);
     }
@@ -226,12 +252,13 @@ const loadTasaBCV = async () => {
       loadAllData();
       setCart([]);
       setPaymentMethod(null);
+      setPagoMovilRef("");
       setMixedPayment({ usd: "", ves: "", vesEfectivo: "" });
     }, [])
   );
 
   // -----------------------------
-  // 🧮 Calcular totales (solo monto del producto)
+  // 🧮 Calcular totales
   // -----------------------------
   useEffect(() => {
     const usd = cart.reduce((sum, item) => sum + (item.precioVentaUSD * item.quantity), 0);
@@ -271,10 +298,13 @@ const loadTasaBCV = async () => {
   // -----------------------------
   const addToCart = (product, quantity) => {
     if (quantity > product.stockActual) {
-      Alert.alert(
-        "Stock insuficiente", 
-        `Solo hay ${product.stockActual} unidades disponibles`
-      );
+      Toast.show({
+        type: "error",
+        text1: "Stock insuficiente",
+        text2: `Solo hay ${product.stockActual} unidades disponibles`,
+        position: "top",
+        visibilityTime: 3000,
+      });
       return;
     }
 
@@ -283,10 +313,13 @@ const loadTasaBCV = async () => {
     if (existingItem) {
       const newQuantity = existingItem.quantity + quantity;
       if (newQuantity > product.stockActual) {
-        Alert.alert(
-          "Stock insuficiente", 
-          `Solo hay ${product.stockActual} unidades disponibles`
-        );
+        Toast.show({
+          type: "error",
+          text1: "Stock insuficiente",
+          text2: `Solo hay ${product.stockActual} unidades disponibles`,
+          position: "top",
+          visibilityTime: 3000,
+        });
         return;
       }
       
@@ -317,10 +350,13 @@ const loadTasaBCV = async () => {
     const product = cart.find(item => item.id === productId);
     
     if (newQuantity > product.stockActual) {
-      Alert.alert(
-        "Stock insuficiente", 
-        `Solo hay ${product.stockActual} unidades disponibles`
-      );
+      Toast.show({
+        type: "error",
+        text1: "Stock insuficiente",
+        text2: `Solo hay ${product.stockActual} unidades disponibles`,
+        position: "top",
+        visibilityTime: 3000,
+      });
       return;
     }
 
@@ -340,7 +376,13 @@ const loadTasaBCV = async () => {
   // -----------------------------
   const handlePayment = () => {
     if (cart.length === 0) {
-      Alert.alert("Error", "No hay productos en el carrito");
+      Toast.show({
+        type: "error",
+        text1: "Error",
+        text2: "No hay productos en el carrito",
+        position: "top",
+        visibilityTime: 3000,
+      });
       return;
     }
     setPaymentModalVisible(true);
@@ -351,8 +393,28 @@ const loadTasaBCV = async () => {
   // -----------------------------
   const finalizeSaleWithPayment = async () => {
     if (!paymentMethod) {
-      Alert.alert("Error", "Selecciona un método de pago");
+      Toast.show({
+        type: "error",
+        text1: "Error",
+        text2: "Selecciona un método de pago",
+        position: "top",
+        visibilityTime: 3000,
+      });
       return;
+    }
+
+    // Validar pago móvil
+    if (paymentMethod === "pagoMovil") {
+      if (!pagoMovilRef || pagoMovilRef.length !== 4 || !/^\d+$/.test(pagoMovilRef)) {
+        Toast.show({
+          type: "error",
+          text1: "Error",
+          text2: "Debe ingresar los últimos 4 dígitos de la referencia (solo números)",
+          position: "top",
+          visibilityTime: 3000,
+        });
+        return;
+      }
     }
 
     // Validar pago mixto
@@ -361,11 +423,16 @@ const loadTasaBCV = async () => {
       const vesAmount = parseFloat(mixedPayment.ves) || 0;
       const vesEfectivoAmount = parseFloat(mixedPayment.vesEfectivo) || 0;
       
-      // Convertir todo a USD para comparar
       const totalPaidUSD = usdAmount + (vesAmount / TASA_CAMBIO) + (vesEfectivoAmount / TASA_CAMBIO);
       
       if (Math.abs(totalPaidUSD - subtotalUSD) > 0.01) {
-        Alert.alert("Error", "La suma de los pagos no coincide con el total en USD");
+        Toast.show({
+          type: "error",
+          text1: "Error",
+          text2: "La suma de los pagos no coincide con el total en USD",
+          position: "top",
+          visibilityTime: 3000,
+        });
         return;
       }
     }
@@ -383,10 +450,13 @@ const loadTasaBCV = async () => {
         if (error) throw error;
 
         if (data.stockActual < item.quantity) {
-          Alert.alert(
-            "Error", 
-            `Stock insuficiente para ${item.nombre}. Stock actual: ${data.stockActual}`
-          );
+          Toast.show({
+            type: "error",
+            text1: "Error",
+            text2: `Stock insuficiente para ${item.nombre}. Stock actual: ${data.stockActual}`,
+            position: "top",
+            visibilityTime: 3000,
+          });
           setProcessing(false);
           return;
         }
@@ -402,16 +472,21 @@ const loadTasaBCV = async () => {
 
         if (updateError) throw updateError;
 
-        // Determinar valores según método de pago
         let precioVentaUSD = 0;
         let precioVentaVES = 0;
         let precioVentaVESEfectivo = 0;
         let tipoTransaccion = "";
+        let pagoMovil = null;
 
         switch (paymentMethod) {
           case "debito":
             precioVentaVES = item.precioVentaVES * item.quantity;
             tipoTransaccion = "Debito";
+            break;
+          case "pagoMovil":
+            precioVentaVES = item.precioVentaVES * item.quantity;
+            tipoTransaccion = "Pago Movil";
+            pagoMovil = parseInt(pagoMovilRef);
             break;
           case "efectivoUSD":
             precioVentaUSD = item.precioVentaUSD * item.quantity;
@@ -422,41 +497,35 @@ const loadTasaBCV = async () => {
             tipoTransaccion = "Efectivo VES";
             break;
           case "mixto":
-  const usdAmount = parseFloat(mixedPayment.usd) || 0;
-  const vesAmount = parseFloat(mixedPayment.ves) || 0;
-  const vesEfectivoAmount = parseFloat(mixedPayment.vesEfectivo) || 0;
-  
-  // Proporción para USD (basada en el subtotal USD)
-  const usdProportion = usdAmount / subtotalUSD;
-  
-  // Proporción para VES (basada en el subtotal VES)
-  const totalVESPagado = vesAmount + vesEfectivoAmount;
-  const vesProportion = totalVESPagado > 0 ? totalVESPagado / subtotalVES : 0;
-  
-  // Distribuir VES entre débito y efectivo según lo que pagó el usuario
-  const vesDebitoProportion = vesAmount > 0 ? vesAmount / totalVESPagado : 0;
-  const vesEfectivoProportion = vesEfectivoAmount > 0 ? vesEfectivoAmount / totalVESPagado : 0;
-  
-  // Calcular valores por producto
-  const itemTotalUSD = item.precioVentaUSD * item.quantity;
-  const itemTotalVES = item.precioVentaVES * item.quantity;
-  
-  precioVentaUSD = itemTotalUSD * usdProportion;
-  
-  // Distribuir la parte en VES
-  if (totalVESPagado > 0) {
-    precioVentaVES = (itemTotalVES * vesProportion) * vesDebitoProportion;
-    precioVentaVESEfectivo = (itemTotalVES * vesProportion) * vesEfectivoProportion;
-  } else {
-    precioVentaVES = 0;
-    precioVentaVESEfectivo = 0;
-  }
-  
-  tipoTransaccion = "Mixto";
-  break;
+            const usdAmount = parseFloat(mixedPayment.usd) || 0;
+            const vesAmount = parseFloat(mixedPayment.ves) || 0;
+            const vesEfectivoAmount = parseFloat(mixedPayment.vesEfectivo) || 0;
+            
+            const usdProportion = usdAmount / subtotalUSD;
+            
+            const totalVESPagado = vesAmount + vesEfectivoAmount;
+            const vesProportion = totalVESPagado > 0 ? totalVESPagado / subtotalVES : 0;
+            
+            const vesDebitoProportion = vesAmount > 0 ? vesAmount / totalVESPagado : 0;
+            const vesEfectivoProportion = vesEfectivoAmount > 0 ? vesEfectivoAmount / totalVESPagado : 0;
+            
+            const itemTotalUSD = item.precioVentaUSD * item.quantity;
+            const itemTotalVES = item.precioVentaVES * item.quantity;
+            
+            precioVentaUSD = itemTotalUSD * usdProportion;
+            
+            if (totalVESPagado > 0) {
+              precioVentaVES = (itemTotalVES * vesProportion) * vesDebitoProportion;
+              precioVentaVESEfectivo = (itemTotalVES * vesProportion) * vesEfectivoProportion;
+            } else {
+              precioVentaVES = 0;
+              precioVentaVESEfectivo = 0;
+            }
+            
+            tipoTransaccion = "Mixto";
+            break;
         }
 
-        // Crear movimiento
         const { error: movementError } = await supa
           .from("productMovement")
           .insert({
@@ -470,6 +539,7 @@ const loadTasaBCV = async () => {
             precioVentaVESEfectivo: precioVentaVESEfectivo,
             empresaID: empresaId,
             tipoTransaccion: tipoTransaccion,
+            pagoMovil: pagoMovil,
             observaciones: `Venta realizada por ${userData?.nombre || "usuario"}`,
             usuarioCedula: userData?.cedula
           });
@@ -480,25 +550,29 @@ const loadTasaBCV = async () => {
       // 3. Limpiar todo
       setCart([]);
       setPaymentMethod(null);
+      setPagoMovilRef("");
       setMixedPayment({ usd: "", ves: "", vesEfectivo: "" });
       setPaymentModalVisible(false);
       
-      Alert.alert(
-        "Éxito", 
-        "Venta realizada correctamente",
-        [
-          { 
-            text: "OK", 
-            onPress: () => {
-              loadAllData();
-            }
-          }
-        ]
-      );
+      Toast.show({
+        type: "success",
+        text1: "Éxito",
+        text2: "Venta realizada correctamente",
+        position: "top",
+        visibilityTime: 3000,
+      });
+      
+      loadAllData();
 
     } catch (error) {
       console.error("Error finalizando venta:", error);
-      Alert.alert("Error", "No se pudo completar la venta");
+      Toast.show({
+        type: "error",
+        text1: "Error",
+        text2: "No se pudo completar la venta",
+        position: "top",
+        visibilityTime: 3000,
+      });
     } finally {
       setProcessing(false);
     }
@@ -541,26 +615,26 @@ const loadTasaBCV = async () => {
             <Text style={styles.headerSubtitle}>Nueva venta</Text>
           </LinearGradient>
 
-          {/* Selector de categoría - VERTICAL */}
+          {/* Selector de categoría */}
           <View style={styles.categoryContainer}>
             <TouchableOpacity 
-    style={styles.categoryHeader}
-    onPress={() => setCategoriasExpandidas(!categoriasExpandidas)}
-  >
-    <View style={styles.categoryHeaderLeft}>
-      <MaterialCommunityIcons name="tag-outline" size={20} color="#64748b" />
-      <Text style={styles.categoryTitle}>
-        {selectedCategoria === "todas" 
-          ? "Todas las categorías" 
-          : categorias.find(c => c.id === selectedCategoria)?.nombre || "Seleccionar categoría"}
-      </Text>
-    </View>
-    <MaterialCommunityIcons 
-      name={categoriasExpandidas ? "chevron-up" : "chevron-down"} 
-      size={24} 
-      color="#64748b" 
-    />
-  </TouchableOpacity>   
+              style={styles.categoryHeader}
+              onPress={() => setCategoriasExpandidas(!categoriasExpandidas)}
+            >
+              <View style={styles.categoryHeaderLeft}>
+                <MaterialCommunityIcons name="tag-outline" size={20} color="#64748b" />
+                <Text style={styles.categoryTitle}>
+                  {selectedCategoria === "todas" 
+                    ? "Todas las categorías" 
+                    : categorias.find(c => c.id === selectedCategoria)?.nombre || "Seleccionar categoría"}
+                </Text>
+              </View>
+              <MaterialCommunityIcons 
+                name={categoriasExpandidas ? "chevron-up" : "chevron-down"} 
+                size={24} 
+                color="#64748b" 
+              />
+            </TouchableOpacity>   
 
             {categoriasExpandidas && (
               <View style={styles.categoryList}>
@@ -660,7 +734,7 @@ const loadTasaBCV = async () => {
             )}
           </View>
 
-          {/* Resumen de factura (sin IVA) */}
+          {/* Resumen de factura */}
           {cart.length > 0 && (
             <View style={styles.summaryContainer}>
               <Text style={styles.sectionTitle}>Resumen</Text>
@@ -691,10 +765,16 @@ const loadTasaBCV = async () => {
                   <Text style={styles.selectedPaymentText}>
                     Método seleccionado: {
                       paymentMethod === "debito" ? "Débito" :
+                      paymentMethod === "pagoMovil" ? "Pago Móvil" :
                       paymentMethod === "efectivoUSD" ? "Efectivo USD" :
                       paymentMethod === "efectivoVES" ? "Efectivo VES" : "Mixto"
                     }
                   </Text>
+                  {paymentMethod === "pagoMovil" && pagoMovilRef && (
+                    <Text style={styles.selectedPaymentRef}>
+                      Ref: ****{pagoMovilRef}
+                    </Text>
+                  )}
                 </View>
               )}
 
@@ -807,10 +887,15 @@ const loadTasaBCV = async () => {
         subtotalVES={subtotalVES}
         paymentMethod={paymentMethod}
         setPaymentMethod={setPaymentMethod}
+        pagoMovilRef={pagoMovilRef}
+        setPagoMovilRef={setPagoMovilRef}
         mixedPayment={mixedPayment}
         setMixedPayment={setMixedPayment}
         tasaCambio={TASA_CAMBIO}
       />
+      
+      {/* Toast component - asegúrate de tener esto en tu App.js o layout principal */}
+      <Toast />
     </SafeAreaView>
   );
 };
@@ -855,7 +940,6 @@ const styles = StyleSheet.create({
     color: 'rgba(255,255,255,0.8)',
     marginTop: 5,
   },
-  // Nuevos estilos para categorías verticales
   categoryContainer: {
     backgroundColor: 'white',
     marginHorizontal: 16,
@@ -871,6 +955,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: 16,
     backgroundColor: '#f8fafc',
+  },
+  categoryHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
   categoryTitle: {
     fontSize: 16,
@@ -1073,6 +1162,12 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     textAlign: 'center',
+  },
+  selectedPaymentRef: {
+    color: '#64748b',
+    fontSize: 12,
+    textAlign: 'center',
+    marginTop: 4,
   },
   finalizeButton: {
     backgroundColor: '#27ae60',

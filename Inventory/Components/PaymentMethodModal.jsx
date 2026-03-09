@@ -17,6 +17,8 @@ const PaymentMethodModal = ({
   subtotalVES,
   paymentMethod,
   setPaymentMethod,
+  pagoMovilRef,
+  setPagoMovilRef,
   mixedPayment,
   setMixedPayment,
   tasaCambio,
@@ -26,6 +28,9 @@ const PaymentMethodModal = ({
     setPaymentMethod(method);
     if (method !== "mixto") {
       setMixedPayment({ usd: "", ves: "", vesEfectivo: "" });
+    }
+    if (method !== "pagoMovil") {
+      setPagoMovilRef("");
     }
   };
 
@@ -39,6 +44,7 @@ const PaymentMethodModal = ({
   const getMethodIcon = (method) => {
     switch (method) {
       case "debito": return "credit-card";
+      case "pagoMovil": return "cellphone"; // Icono para pago móvil
       case "efectivoUSD": return "cash-usd";
       case "efectivoVES": return "cash";
       case "mixto": return "swap-horizontal";
@@ -49,9 +55,10 @@ const PaymentMethodModal = ({
   const getMethodColor = (method) => {
     switch (method) {
       case "debito": return "#3498db";
+      case "pagoMovil": return "#9b59b6"; // Color morado para pago móvil
       case "efectivoUSD": return "#f39c12";
       case "efectivoVES": return "#27ae60";
-      case "mixto": return "#9b59b6";
+      case "mixto": return "#e67e22";
       default: return "#64748b";
     }
   };
@@ -64,6 +71,11 @@ const PaymentMethodModal = ({
     
     const totalUSD = usd + (ves / tasaCambio) + (vesEfectivo / tasaCambio);
     return Math.abs(totalUSD - subtotalUSD) <= 0.01;
+  };
+
+  // Validar referencia de pago móvil
+  const isPagoMovilValid = () => {
+    return pagoMovilRef && pagoMovilRef.length === 4 && /^\d+$/.test(pagoMovilRef);
   };
 
   // Calcular faltante para pago mixto
@@ -164,6 +176,30 @@ const PaymentMethodModal = ({
                 )}
               </TouchableOpacity>
 
+              {/* NUEVA OPCIÓN: Pago Móvil */}
+              <TouchableOpacity
+                style={[
+                  styles.paymentOption,
+                  paymentMethod === "pagoMovil" && styles.paymentOptionActive,
+                ]}
+                onPress={() => handleSelectMethod("pagoMovil")}
+              >
+                <View style={[styles.optionIcon, { backgroundColor: getMethodColor("pagoMovil") + "20" }]}>
+                  <MaterialCommunityIcons 
+                    name={getMethodIcon("pagoMovil")} 
+                    size={24} 
+                    color={getMethodColor("pagoMovil")} 
+                  />
+                </View>
+                <View style={styles.optionInfo}>
+                  <Text style={styles.optionTitle}>Pago Móvil</Text>
+                  <Text style={styles.optionSubtitle}>Pago por transferencia (Bs.)</Text>
+                </View>
+                {paymentMethod === "pagoMovil" && (
+                  <MaterialCommunityIcons name="check-circle" size={24} color="#27ae60" />
+                )}
+              </TouchableOpacity>
+
               <TouchableOpacity
                 style={[
                   styles.paymentOption,
@@ -233,6 +269,42 @@ const PaymentMethodModal = ({
                 )}
               </TouchableOpacity>
             </View>
+
+            {/* Campo para referencia de pago móvil */}
+            {paymentMethod === "pagoMovil" && (
+              <View style={styles.pagoMovilContainer}>
+                <Text style={styles.pagoMovilTitle}>Referencia de Pago Móvil</Text>
+                <Text style={styles.pagoMovilSubtitle}>Ingrese los últimos 4 dígitos:</Text>
+                
+                <TextInput
+                  style={styles.pagoMovilInput}
+                  value={pagoMovilRef}
+                  onChangeText={(text) => {
+                    // Solo permitir números y máximo 4 dígitos
+                    const numeric = text.replace(/[^0-9]/g, "");
+                    if (numeric.length <= 4) {
+                      setPagoMovilRef(numeric);
+                    }
+                  }}
+                  keyboardType="numeric"
+                  placeholder="1234"
+                  placeholderTextColor="#94a3b8"
+                  maxLength={4}
+                />
+                
+                {pagoMovilRef.length === 4 && (
+                  <Text style={styles.pagoMovilSuccess}>
+                    ✓ Referencia válida
+                  </Text>
+                )}
+                
+                {pagoMovilRef.length > 0 && pagoMovilRef.length < 4 && (
+                  <Text style={styles.pagoMovilWarning}>
+                    ⚠ Deben ser 4 dígitos
+                  </Text>
+                )}
+              </View>
+            )}
 
             {/* Campos para pago mixto */}
             {paymentMethod === "mixto" && (
@@ -316,10 +388,15 @@ const PaymentMethodModal = ({
             <TouchableOpacity 
               style={[
                 styles.confirmButton, 
-                (!paymentMethod || (paymentMethod === "mixto" && !isMixedPaymentValid())) && styles.confirmButtonDisabled
+                (!paymentMethod || 
+                 (paymentMethod === "mixto" && !isMixedPaymentValid()) ||
+                 (paymentMethod === "pagoMovil" && !isPagoMovilValid())) && 
+                styles.confirmButtonDisabled
               ]}
               onPress={handleConfirm}
-              disabled={!paymentMethod || (paymentMethod === "mixto" && !isMixedPaymentValid())}
+              disabled={!paymentMethod || 
+                       (paymentMethod === "mixto" && !isMixedPaymentValid()) ||
+                       (paymentMethod === "pagoMovil" && !isPagoMovilValid())}
             >
               <Text style={styles.confirmButtonText}>Confirmar</Text>
             </TouchableOpacity>
@@ -421,6 +498,57 @@ const styles = StyleSheet.create({
   optionSubtitle: {
     fontSize: 12,
     color: '#64748b',
+  },
+  // Nuevos estilos para pago móvil
+  pagoMovilContainer: {
+    backgroundColor: '#f8fafc',
+    padding: 15,
+    borderRadius: 12,
+    marginBottom: 15,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
+  pagoMovilTitle: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#1e293b',
+    marginBottom: 4,
+  },
+  pagoMovilSubtitle: {
+    fontSize: 13,
+    color: '#64748b',
+    marginBottom: 10,
+  },
+  pagoMovilInput: {
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    borderRadius: 8,
+    padding: 12,
+    fontSize: 16,
+    color: '#1e293b',
+    backgroundColor: 'white',
+    textAlign: 'center',
+    letterSpacing: 2,
+  },
+  pagoMovilSuccess: {
+    fontSize: 13,
+    color: '#27ae60',
+    marginTop: 8,
+    fontWeight: '600',
+    textAlign: 'center',
+    padding: 8,
+    backgroundColor: '#e3f7e3',
+    borderRadius: 8,
+  },
+  pagoMovilWarning: {
+    fontSize: 13,
+    color: '#e74c3c',
+    marginTop: 8,
+    fontWeight: '600',
+    textAlign: 'center',
+    padding: 8,
+    backgroundColor: '#fde8e8',
+    borderRadius: 8,
   },
   mixedContainer: {
     backgroundColor: '#f8fafc',

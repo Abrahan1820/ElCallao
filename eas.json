@@ -1,41 +1,21 @@
 {
   "cli": {
-    "version": ">= 15.0.14",
+    "version": ">= 16.31.0",
     "appVersionSource": "remote"
   },
   "build": {
     "development": {
       "developmentClient": true,
-      "distribution": "internal",
-      "android": {},
-      "ios": {}
+      "distribution": "internal"
     },
     "preview": {
-      "distribution": "internal",
-      "android": {
-        "buildType": "apk"  
-      }
+      "distribution": "internal"
     },
     "production": {
-      "autoIncrement": true,
-      "android": {
-        "buildType": "apk"  
-      },
-      "ios": {
-        "enterpriseProvisioning": "universal"
-      }
+      "autoIncrement": true
     }
   },
   "submit": {
-    "production": {
-      "android": {
-        "serviceAccountKeyPath": "./keys/google-play-key.json",
-        "track": "production"
-      },
-      "ios": {
-        "appleId": "tu-email@example.com",
-        "ascAppId": "123456789"
-      }
-    }
+    "production": {}
   }
 }

@@ -7,6 +7,7 @@ import {
   FlatList,
   StyleSheet,
   Alert,
+  SafeAreaView
 } from "react-native";
 import { useNavigation } from "@react-navigation/native";
 import { SupaClient } from "../Supabase/supabase";
@@ -195,7 +196,7 @@ const AdminUsers = () => {
   };
 
   return (
-    <View style={styles.grande}>
+    <SafeAreaView style={styles.safeArea}>
       <NavBar />
       <View style={styles.container}>
         <Text style={styles.title}>Administrar Usuarios</Text>
@@ -260,7 +261,7 @@ const AdminUsers = () => {
           )}
         />
       </View>
-    </View>
+    </SafeAreaView>
   );
 };
 
@@ -268,6 +269,10 @@ export default AdminUsers;
 
 // 📌 Estilos
 const styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+    backgroundColor: '#45c0e8',
+  },
   grande: { flex: 1 },
   container: {
     flex: 1,

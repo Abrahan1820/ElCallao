@@ -7,7 +7,7 @@ import {
   FlatList,
   StyleSheet,
   ScrollView,
-  Alert,
+  SafeAreaView
 } from "react-native";
 import { SupaClient } from "../Supabase/supabase";
 import NavBar from "../NavBar/Components/NavBar";
@@ -33,6 +33,19 @@ const AdminProvider = () => {
   const [loading, setLoading] = useState(false);
   const [empresaID, setEmpresaID] = useState("");
 
+  // Función helper para mostrar toasts
+  const showToast = (type, title, message) => {
+    Toast.show({
+      type: type,
+      text1: title,
+      text2: message,
+      position: 'top',
+      visibilityTime: 3000,
+      autoHide: true,
+      topOffset: 50,
+    });
+  };
+
   // Verificar acceso de administrador
   useEffect(() => {
     const verificarAcceso = async () => {
@@ -42,13 +55,7 @@ const AdminProvider = () => {
 
         if (!user || !user.esActivo ) {
           await AsyncStorage.removeItem("userSession");
-          Toast.show({
-            type: "error",
-            text1: "Usuario no encontrado",
-            text2: "Cerrando Sesión.",
-            position: "top",
-            visibilityTime: 3000,
-          });
+          showToast("error", "Usuario no encontrado", "Cerrando Sesión.");
           navigation.navigate("Log_in");
           return;
         }
@@ -67,23 +74,11 @@ const AdminProvider = () => {
 
         if (error || !data?.esActivo) {
           await AsyncStorage.removeItem("userSession");
-          Toast.show({
-            type: "error",
-            text1: "Sesión Inactiva",
-            text2: "Cerrando Sesión.",
-            position: "top",
-            visibilityTime: 3000,
-          });
+          showToast("error", "Sesión Inactiva", "Cerrando Sesión.");
           navigation.navigate("Log_in");
         }
         if (!data?.esAdministrador) {
-          Toast.show({
-            type: "error",
-            text1: "No Administrador",
-            text2: "Acceso no autorizado.",
-            position: "top",
-            visibilityTime: 3000,
-          });
+          showToast("error", "No Administrador", "Acceso no autorizado.");
           navigation.navigate("PaginaPrincipal");
         }
       } catch (error) {
@@ -131,13 +126,7 @@ const AdminProvider = () => {
       setProveedores(resultados);
     } catch (error) {
       console.error("Error obteniendo proveedores:", error);
-      Toast.show({
-        type: "error",
-        text1: "Error",
-        text2: "No se pudieron obtener los proveedores",
-        position: "top",
-        visibilityTime: 3000,
-      });
+      showToast("error", "Error", "No se pudieron obtener los proveedores");
     } finally {
       setLoading(false);
     }
@@ -155,24 +144,12 @@ const AdminProvider = () => {
   const guardarProveedor = async () => {
     // Validaciones
     if (!proveedorID.trim()) {
-      Toast.show({
-        type: "error",
-        text1: "Error",
-        text2: "El ID del proveedor es obligatorio",
-        position: "top",
-        visibilityTime: 3000,
-      });
+      showToast("error", "Error", "El ID del proveedor es obligatorio");
       return;
     }
 
     if (!nombre.trim()) {
-      Toast.show({
-        type: "error",
-        text1: "Error",
-        text2: "El nombre de la empresa es obligatorio",
-        position: "top",
-        visibilityTime: 3000,
-      });
+      showToast("error", "Error", "El nombre de la empresa es obligatorio");
       return;
     }
 
@@ -192,13 +169,7 @@ const AdminProvider = () => {
 
         if (error) throw error;
 
-        Toast.show({
-          type: "success",
-          text1: "Éxito",
-          text2: "Proveedor actualizado correctamente",
-          position: "top",
-          visibilityTime: 3000,
-        });
+        showToast("success", "Éxito", "Proveedor actualizado correctamente");
       } else {
         // Verificar si ya existe un proveedor con ese ID
         const { data: existe, error: checkError } = await supa
@@ -207,18 +178,12 @@ const AdminProvider = () => {
           .eq("proveedorID", proveedorID)
           .single();
 
-        if (checkError && checkError.code !== "PGRST116") { // PGRST116 es "no se encontró"
+        if (checkError && checkError.code !== "PGRST116") {
           throw checkError;
         }
 
         if (existe) {
-          Toast.show({
-            type: "error",
-            text1: "Error",
-            text2: "Ya existe un proveedor con ese ID",
-            position: "top",
-            visibilityTime: 3000,
-          });
+          showToast("error", "Error", "Ya existe un proveedor con ese ID");
           return;
         }
 
@@ -237,26 +202,14 @@ const AdminProvider = () => {
 
         if (error) throw error;
 
-        Toast.show({
-          type: "success",
-          text1: "Éxito",
-          text2: "Proveedor creado correctamente",
-          position: "top",
-          visibilityTime: 3000,
-        });
+        showToast("success", "Éxito", "Proveedor creado correctamente");
       }
 
       limpiarFormulario();
       obtenerProveedores();
     } catch (error) {
       console.error("Error guardando proveedor:", error);
-      Toast.show({
-        type: "error",
-        text1: "Error",
-        text2: "No se pudo guardar el proveedor",
-        position: "top",
-        visibilityTime: 3000,
-      });
+      showToast("error", "Error", "No se pudo guardar el proveedor");
     }
   };
 
@@ -270,45 +223,51 @@ const AdminProvider = () => {
   };
 
   const cambiarEstadoProveedor = async (id, nuevoEstado) => {
-    Alert.alert(
-      nuevoEstado ? "Activar proveedor" : "Desactivar proveedor",
-      `¿Estás seguro de ${nuevoEstado ? "activar" : "desactivar"} este proveedor?`,
-      [
-        { text: "Cancelar", style: "cancel" },
-        {
-          text: "Confirmar",
-          onPress: async () => {
-            try {
-              const { error } = await supa
-                .from("provider")
-                .update({ esActivo: nuevoEstado })
-                .eq("proveedorID", id);
+    // Usar Toast de confirmación personalizado
+    Toast.show({
+      type: 'customConfirm',
+      text1: nuevoEstado ? "Activar proveedor" : "Desactivar proveedor",
+      text2: `¿Estás seguro de ${nuevoEstado ? "activar" : "desactivar"} este proveedor?`,
+      props: {
+        buttons: [
+          {
+            text: 'Cancelar',
+            onPress: () => Toast.hide(),
+            style: { color: '#64748b' },
+          },
+          {
+            text: 'Confirmar',
+            onPress: async () => {
+              Toast.hide();
+              try {
+                const { error } = await supa
+                  .from("provider")
+                  .update({ esActivo: nuevoEstado })
+                  .eq("proveedorID", id);
 
-              if (error) throw error;
+                if (error) throw error;
 
-              Toast.show({
-                type: "success",
-                text1: nuevoEstado ? "Proveedor activado" : "Proveedor desactivado",
-                text2: `El proveedor ha sido ${nuevoEstado ? "activado" : "desactivado"} correctamente`,
-                position: "top",
-                visibilityTime: 3000,
-              });
+                showToast(
+                  "success",
+                  nuevoEstado ? "Proveedor activado" : "Proveedor desactivado",
+                  `El proveedor ha sido ${nuevoEstado ? "activado" : "desactivado"} correctamente`
+                );
 
-              obtenerProveedores();
-            } catch (error) {
-              console.error("Error cambiando estado:", error);
-              Toast.show({
-                type: "error",
-                text1: "Error",
-                text2: `No se pudo ${nuevoEstado ? "activar" : "desactivar"} el proveedor`,
-                position: "top",
-                visibilityTime: 3000,
-              });
-            }
-          }
-        }
-      ]
-    );
+                obtenerProveedores();
+              } catch (error) {
+                console.error("Error cambiando estado:", error);
+                showToast(
+                  "error",
+                  "Error",
+                  `No se pudo ${nuevoEstado ? "activar" : "desactivar"} el proveedor`
+                );
+              }
+            },
+            style: { color: nuevoEstado ? '#27ae60' : '#e74c3c', fontWeight: 'bold' },
+          },
+        ],
+      },
+    });
   };
 
   const FiltroBoton = ({ estado, label }) => (
@@ -335,7 +294,9 @@ const AdminProvider = () => {
       <View style={styles.itemHeader}>
         <Text style={styles.itemNombre}>{item.nombre}</Text>
         <View style={[styles.estadoBadge, item.esActivo ? styles.estadoActivo : styles.estadoInactivo]}>
-          <Text style={styles.estadoTexto}>{item.esActivo ? "ACTIVO" : "INACTIVO"}</Text>
+          <Text style={[styles.estadoTexto, item.esActivo ? styles.textoActivo : styles.textoInactivo]}>
+            {item.esActivo ? "ACTIVO" : "INACTIVO"}
+          </Text>
         </View>
       </View>
 
@@ -402,7 +363,7 @@ const AdminProvider = () => {
   );
 
   return (
-    <View style={styles.grande}>
+    <SafeAreaView style={styles.safeArea}>
       <NavBar />
       <ScrollView style={styles.container}>
         <Text style={styles.title}>Administrar Proveedores</Text>
@@ -527,11 +488,15 @@ const AdminProvider = () => {
 
         <View style={{ height: 20 }} />
       </ScrollView>
-    </View>
+    </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+    backgroundColor: '#45c0e8',
+  },
   grande: {
     flex: 1,
     backgroundColor: "#f5f5f5",
@@ -713,7 +678,12 @@ const styles = StyleSheet.create({
   estadoTexto: {
     fontSize: 11,
     fontWeight: "700",
+  },
+  textoActivo: {
     color: "#27ae60",
+  },
+  textoInactivo: {
+    color: "#e74c3c",
   },
   itemContent: {
     marginBottom: 12,

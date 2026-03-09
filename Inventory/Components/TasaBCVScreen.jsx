@@ -120,12 +120,7 @@ const TasaBCVScreen = () => {
           colors={["#45c0e8", "#3aa5c9"]}
           style={styles.header}
         >
-          <TouchableOpacity 
-            style={styles.backButton}
-            onPress={() => navigation.goBack()}
-          >
-            <MaterialCommunityIcons name="arrow-left" size={24} color="white" />
-          </TouchableOpacity>
+          
           <Text style={styles.headerTitle}>Tasa BCV</Text>
           <View style={{ width: 24 }} />
         </LinearGradient>
@@ -169,12 +164,7 @@ const TasaBCVScreen = () => {
             )}
           </TouchableOpacity>
 
-          <View style={styles.infoBox}>
-            <MaterialCommunityIcons name="information" size={20} color="#45c0e8" />
-            <Text style={styles.infoText}>
-              La tasa se actualiza diariamente según el BCV
-            </Text>
-          </View>
+          
         </View>
       </View>
     </SafeAreaView>

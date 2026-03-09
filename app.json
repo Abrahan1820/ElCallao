@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "GestionNueveOnce",
-    "slug": "gestion-nueve-once",
+    "name": "ElCallao",
+    "slug": "kioskoElCallao",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/Icon.png",
@@ -14,7 +14,7 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.nueveonce.app",
+      "bundleIdentifier": "com.kioskoelcallao.app",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
       }
@@ -24,19 +24,22 @@
         "foregroundImage": "./assets/AdaptativeIcon.png",
         "backgroundColor": "#ffffff"
       },
-      "package": "com.nueveonce.app"
+      "package": "com.kioskoElCallao.app"
     },
     "web": {
       "favicon": "./assets/Icon.png",
       "bundler": "webpack",
       "build": {
         "babel": {
-          "include": ["react-native-web"]
+          "include": [
+            "react-native-web"
+          ]
         }
-    }},
+      }
+    },
     "extra": {
       "eas": {
-        "projectId": "ee939501-5891-430d-9c6d-5d2d0875dbb7"
+        "projectId": "1fc1cc99-6653-4407-aeef-0d92cd68136e"
       }
     }
   }

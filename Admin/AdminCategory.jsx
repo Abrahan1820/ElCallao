@@ -7,7 +7,7 @@ import {
   FlatList,
   StyleSheet,
   ScrollView,
-  Alert,
+  SafeAreaView
 } from "react-native";
 import { SupaClient } from "../Supabase/supabase";
 import NavBar from "../NavBar/Components/NavBar";
@@ -29,6 +29,19 @@ const AdminCategory = () => {
   const [busqueda, setBusqueda] = useState("");
   const [loading, setLoading] = useState(false);
 
+  // Función helper para mostrar toasts
+  const showToast = (type, title, message) => {
+    Toast.show({
+      type: type,
+      text1: title,
+      text2: message,
+      position: 'top',
+      visibilityTime: 3000,
+      autoHide: true,
+      topOffset: 50,
+    });
+  };
+
   // Verificar acceso de administrador
   useEffect(() => {
     const verificarAcceso = async () => {
@@ -38,13 +51,7 @@ const AdminCategory = () => {
 
         if (!user || !user.esActivo) {
           await AsyncStorage.removeItem("userSession");
-          Toast.show({
-            type: "error",
-            text1: "Usuario no encontrado",
-            text2: "Cerrando Sesión.",
-            position: "top",
-            visibilityTime: 3000,
-          });
+          showToast("error", "Usuario no encontrado", "Cerrando Sesión.");
           navigation.navigate("Log_in");
           return;
         }
@@ -63,23 +70,11 @@ const AdminCategory = () => {
 
         if (error || !data?.esActivo) {
           await AsyncStorage.removeItem("userSession");
-          Toast.show({
-            type: "error",
-            text1: "Sesión Inactiva",
-            text2: "Cerrando Sesión.",
-            position: "top",
-            visibilityTime: 3000,
-          });
+          showToast("error", "Sesión Inactiva", "Cerrando Sesión.");
           navigation.navigate("Log_in");
         }
         if (!data?.esAdministrador) {
-          Toast.show({
-            type: "error",
-            text1: "No Administrador",
-            text2: "Acceso no autorizado.",
-            position: "top",
-            visibilityTime: 3000,
-          });
+          showToast("error", "No Administrador", "Acceso no autorizado.");
           navigation.navigate("PaginaPrincipal");
         }
       } catch (error) {
@@ -125,13 +120,7 @@ const AdminCategory = () => {
       setCategorias(resultados);
     } catch (error) {
       console.error("Error obteniendo categorías:", error);
-      Toast.show({
-        type: "error",
-        text1: "Error",
-        text2: "No se pudieron obtener las categorías",
-        position: "top",
-        visibilityTime: 3000,
-      });
+      showToast("error", "Error", "No se pudieron obtener las categorías");
     } finally {
       setLoading(false);
     }
@@ -146,13 +135,7 @@ const AdminCategory = () => {
   const guardarCategoria = async () => {
     // Validaciones
     if (!nombre.trim()) {
-      Toast.show({
-        type: "error",
-        text1: "Error",
-        text2: "El nombre de la categoría es obligatorio",
-        position: "top",
-        visibilityTime: 3000,
-      });
+      showToast("error", "Error", "El nombre de la categoría es obligatorio");
       return;
     }
 
@@ -169,13 +152,7 @@ const AdminCategory = () => {
 
         if (error) throw error;
 
-        Toast.show({
-          type: "success",
-          text1: "Éxito",
-          text2: "Categoría actualizada correctamente",
-          position: "top",
-          visibilityTime: 3000,
-        });
+        showToast("success", "Éxito", "Categoría actualizada correctamente");
       } else {
         // Verificar si ya existe una categoría con ese nombre
         const { data: existe, error: checkError } = await supa
@@ -189,13 +166,7 @@ const AdminCategory = () => {
         }
 
         if (existe) {
-          Toast.show({
-            type: "error",
-            text1: "Error",
-            text2: "Ya existe una categoría con ese nombre",
-            position: "top",
-            visibilityTime: 3000,
-          });
+          showToast("error", "Error", "Ya existe una categoría con ese nombre");
           return;
         }
 
@@ -210,26 +181,14 @@ const AdminCategory = () => {
 
         if (error) throw error;
 
-        Toast.show({
-          type: "success",
-          text1: "Éxito",
-          text2: "Categoría creada correctamente",
-          position: "top",
-          visibilityTime: 3000,
-        });
+        showToast("success", "Éxito", "Categoría creada correctamente");
       }
 
       limpiarFormulario();
       obtenerCategorias();
     } catch (error) {
       console.error("Error guardando categoría:", error);
-      Toast.show({
-        type: "error",
-        text1: "Error",
-        text2: "No se pudo guardar la categoría",
-        position: "top",
-        visibilityTime: 3000,
-      });
+      showToast("error", "Error", "No se pudo guardar la categoría");
     }
   };
 
@@ -243,55 +202,55 @@ const AdminCategory = () => {
 
   const cambiarEstadoCategoria = async (id, nuevoEstado) => {
     if (!id) {
-      Toast.show({
-        type: "error",
-        text1: "Error",
-        text2: "ID de categoría no válido",
-        position: "top",
-        visibilityTime: 3000,
-      });
+      showToast("error", "Error", "ID de categoría no válido");
       return;
     }
 
-    Alert.alert(
-      nuevoEstado ? "Activar categoría" : "Desactivar categoría",
-      `¿Estás seguro de ${nuevoEstado ? "activar" : "desactivar"} esta categoría?`,
-      [
-        { text: "Cancelar", style: "cancel" },
-        {
-          text: "Confirmar",
-          onPress: async () => {
-            try {
-              const { error } = await supa
-                .from("productCategory")
-                .update({ esActivo: nuevoEstado })
-                .eq("id", id);
+    // Usar Toast de confirmación personalizado
+    Toast.show({
+      type: 'customConfirm',
+      text1: nuevoEstado ? "Activar categoría" : "Desactivar categoría",
+      text2: `¿Estás seguro de ${nuevoEstado ? "activar" : "desactivar"} esta categoría?`,
+      props: {
+        buttons: [
+          {
+            text: 'Cancelar',
+            onPress: () => Toast.hide(),
+            style: { color: '#64748b' },
+          },
+          {
+            text: 'Confirmar',
+            onPress: async () => {
+              Toast.hide();
+              try {
+                const { error } = await supa
+                  .from("productCategory")
+                  .update({ esActivo: nuevoEstado })
+                  .eq("id", id);
 
-              if (error) throw error;
+                if (error) throw error;
 
-              Toast.show({
-                type: "success",
-                text1: nuevoEstado ? "Categoría activada" : "Categoría desactivada",
-                text2: `La categoría ha sido ${nuevoEstado ? "activada" : "desactivada"} correctamente`,
-                position: "top",
-                visibilityTime: 3000,
-              });
+                showToast(
+                  "success", 
+                  nuevoEstado ? "Categoría activada" : "Categoría desactivada",
+                  `La categoría ha sido ${nuevoEstado ? "activada" : "desactivada"} correctamente`
+                );
 
-              obtenerCategorias();
-            } catch (error) {
-              console.error("Error cambiando estado:", error);
-              Toast.show({
-                type: "error",
-                text1: "Error",
-                text2: `No se pudo ${nuevoEstado ? "activar" : "desactivar"} la categoría`,
-                position: "top",
-                visibilityTime: 3000,
-              });
-            }
-          }
-        }
-      ]
-    );
+                obtenerCategorias();
+              } catch (error) {
+                console.error("Error cambiando estado:", error);
+                showToast(
+                  "error", 
+                  "Error", 
+                  `No se pudo ${nuevoEstado ? "activar" : "desactivar"} la categoría`
+                );
+              }
+            },
+            style: { color: nuevoEstado ? '#27ae60' : '#e74c3c', fontWeight: 'bold' },
+          },
+        ],
+      },
+    });
   };
 
   const FiltroBoton = ({ estado, label }) => (
@@ -370,7 +329,7 @@ const AdminCategory = () => {
   };
 
   return (
-    <View style={styles.grande}>
+    <SafeAreaView style={styles.safeArea}>
       <NavBar />
       <ScrollView style={styles.container}>
         <Text style={styles.title}>Administrar Categorías</Text>
@@ -472,11 +431,15 @@ const AdminCategory = () => {
 
         <View style={{ height: 20 }} />
       </ScrollView>
-    </View>
+    </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+    backgroundColor: '#45c0e8',
+  },
   grande: {
     flex: 1,
     backgroundColor: "#f5f5f5",
