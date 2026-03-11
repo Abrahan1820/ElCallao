@@ -19,7 +19,8 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useNavigation, useFocusEffect } from "@react-navigation/native";
 import ProductSelectionModal from "./ProductSelectionModal";
 import PaymentMethodModal from "./PaymentMethodModal";
-import AdvanceCashModal from "./AdvanceCashModal"; // Nuevo modal
+import AdvanceCashModal from "./AdvanceCashModal";
+import RechargeModal from "./RechargeModal"; // Nuevo modal para recargas
 import Toast from "react-native-toast-message";
 
 const BillingScreen = () => {
@@ -34,7 +35,8 @@ const BillingScreen = () => {
   const [categorias, setCategorias] = useState([]);
   const [userData, setUserData] = useState(null);
   const [modalVisible, setModalVisible] = useState(false);
-  const [advanceModalVisible, setAdvanceModalVisible] = useState(false); // Nuevo modal
+  const [advanceModalVisible, setAdvanceModalVisible] = useState(false);
+  const [rechargeModalVisible, setRechargeModalVisible] = useState(false); // Nuevo modal
   const [paymentModalVisible, setPaymentModalVisible] = useState(false);
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState(false);
@@ -55,7 +57,7 @@ const BillingScreen = () => {
     vesEfectivo: "",
   });
   
-  // Resumen de factura (solo monto del producto, sin IVA)
+  // Resumen de factura
   const [subtotalUSD, setSubtotalUSD] = useState(0);
   const [subtotalVES, setSubtotalVES] = useState(0);
   const [TASA_CAMBIO, setTASA_CAMBIO] = useState(60);
@@ -153,7 +155,8 @@ const BillingScreen = () => {
         .select("*")
         .eq("empresaID", empId)
         .eq("esActivo", true)
-        .neq("id", 48);
+        .neq("id", 48) // Excluir avance de efectivo
+        .neq("id", 49); // Excluir recargas
       
       if (selectedCategoria !== "todas") {
         query = query.eq("categoriaID", selectedCategoria);
@@ -260,17 +263,41 @@ const BillingScreen = () => {
     }, [])
   );
 
-  // -----------------------------
-  // 🧮 Calcular totales
-  // -----------------------------
-  useEffect(() => {
-    const usd = cart.reduce((sum, item) => sum + (item.precioVentaUSD * item.quantity), 0);
-    const ves = cart.reduce((sum, item) => sum + (item.precioVentaVES * item.quantity), 0);
+// -----------------------------
+// 🧮 Calcular totales - VERSIÓN CORREGIDA
+// -----------------------------
+useEffect(() => {
+  let totalVES = 0;
+  
+  cart.forEach(item => {
+    if (item.isAdvance) {
+      totalVES += item.precioVentaVES || 0;
+    } 
+    else if (item.isRecharge) {
+      totalVES += item.rechargeDetails?.totalConRecargo || 0;
+    } 
+    else {
+      totalVES += (item.precioVentaVES || 0) * (item.quantity || 1);
+    }
+  });
 
-    setSubtotalUSD(usd);
-    setSubtotalVES(ves);
-  }, [cart]);
+  const totalUSD = TASA_CAMBIO > 0 ? totalVES / TASA_CAMBIO : 0;
 
+  console.log('💰 SUBTOTALES CALCULADOS:', {
+    totalVES,
+    totalUSD,
+    tasa: TASA_CAMBIO,
+    items: cart.map(i => ({
+      nombre: i.nombre,
+      montoVES: i.isRecharge ? i.rechargeDetails?.totalConRecargo : (i.precioVentaVES * (i.quantity || 1)),
+      isAdvance: i.isAdvance,
+      isRecharge: i.isRecharge
+    }))
+  });
+  
+  setSubtotalVES(totalVES);
+  setSubtotalUSD(totalUSD);
+}, [cart, TASA_CAMBIO]);
   // -----------------------------
   // 🔍 Búsqueda de productos
   // -----------------------------
@@ -343,20 +370,18 @@ const BillingScreen = () => {
   // 💰 Agregar avance de efectivo al carrito
   // -----------------------------
   const addAdvanceCash = (monto) => {
-    // Calcular el 20% adicional redondeado hacia arriba
     const montoConInteres = Math.ceil(monto * 1.2);
     const interes = montoConInteres - monto;
     
-    // Crear un producto especial para avance de efectivo
     const advanceProduct = {
-      id: 'advance-cash', // ID especial para identificar
+      id: 'advance-cash',
       nombre: '💰 AVANCE DE EFECTIVO',
       descripcion: `Avance de efectivo - Monto entregado: Bs. ${monto}.`,
-      precioVentaUSD: 0, // No aplica USD
-      precioVentaVES: montoConInteres, // Monto con interés (va a débito)
-      precioVentaVESEfectivo: -monto, // Monto entregado en efectivo (negativo)
+      precioVentaUSD: 0,
+      precioVentaVES: montoConInteres,
+      precioVentaVESEfectivo: -monto,
       cantidad: 1,
-      isAdvance: true, // Flag para identificar
+      isAdvance: true,
       advanceDetails: {
         montoEntregado: monto,
         interes: interes,
@@ -376,6 +401,46 @@ const BillingScreen = () => {
     });
   };
 
+
+// 📱 Agregar recarga al carrito
+const addRecharge = (monto) => {
+  const montoConRecargo = Math.ceil(monto * 1.2);
+  const recargo = montoConRecargo - monto;
+  
+  const rechargeProduct = {
+    id: 'recharge-service',
+    nombre: '📱 RECARGA DE SERVICIO',
+    descripcion: `Recarga - Monto: Bs. ${monto} (Cliente paga: Bs. ${montoConRecargo})`,
+    precioVentaUSD: 0,
+    precioVentaVES: -monto,
+    precioVentaVESEfectivo: 0,
+    rechargeDetails: {
+      montoOriginal: monto,
+      recargo: recargo,
+      totalConRecargo: montoConRecargo
+    },
+    cantidad: 1,
+    isRecharge: true
+  };
+
+  console.log('➕ Agregando recarga al carrito:', rechargeProduct);
+  console.log('🛒 Carrito antes:', cart.length);
+  
+  setCart([...cart, rechargeProduct]);
+  
+  console.log('🛒 Carrito después (en teoría):', cart.length + 1);
+  
+  setRechargeModalVisible(false);
+  
+  Toast.show({
+    type: "success",
+    text1: "Recarga agregada",
+    text2: `Monto: Bs. ${monto} + 20% (Bs. ${recargo}) = Bs. ${montoConRecargo}`,
+    position: "top",
+    visibilityTime: 4000,
+  });
+};
+
   // -----------------------------
   // ❌ Eliminar producto del carrito
   // -----------------------------
@@ -387,12 +452,11 @@ const BillingScreen = () => {
   // 🔄 Actualizar cantidad de un producto en el carrito
   // -----------------------------
   const updateCartQuantity = (productId, newQuantity) => {
-    // No permitir cambiar cantidad de avance de efectivo
-    if (productId === 'advance-cash') {
+    if (productId === 'advance-cash' || productId === 'recharge-service') {
       Toast.show({
         type: "info",
         text1: "No disponible",
-        text2: "El avance de efectivo es único por transacción",
+        text2: "Este servicio es único por transacción",
         position: "top",
         visibilityTime: 2000,
       });
@@ -423,36 +487,32 @@ const BillingScreen = () => {
     }
   };
 
-// -----------------------------
-// 💰 Manejar pago
-// -----------------------------
-const handlePayment = () => {
-  if (cart.length === 0) {
-    Toast.show({
-      type: "error",
-      text1: "Error",
-      text2: "No hay productos en el carrito",
-      position: "top",
-      visibilityTime: 3000,
-    });
-    return;
-  }
-  
-  // Verificar si hay avance de efectivo
-  const tieneAvance = cart.some(item => item.isAdvance);
-  
-  // Pasar la información al modal para que muestre solo las opciones disponibles
-  setPaymentModalVisible(true);
-};
+  // -----------------------------
+  // 💰 Manejar pago
+  // -----------------------------
+  const handlePayment = () => {
+    if (cart.length === 0) {
+      Toast.show({
+        type: "error",
+        text1: "Error",
+        text2: "No hay productos en el carrito",
+        position: "top",
+        visibilityTime: 3000,
+      });
+      return;
+    }
+    
+    setPaymentModalVisible(true);
+  };
 
-
-// ✅ Finalizar venta con método de pago
+  // ✅ Finalizar venta con método de pago
+  // ✅ Finalizar venta con método de pago
 const finalizeSaleWithPayment = async () => {
-  // Verificar si hay avance de efectivo en el carrito
   const tieneAvance = cart.some(item => item.isAdvance);
+  const tieneRecarga = cart.some(item => item.isRecharge);
   
-  // Validar método de pago siempre
-  if (!paymentMethod) {
+  // Validar método de pago
+  if (!paymentMethod && !tieneRecarga) {
     Toast.show({
       type: "error",
       text1: "Error",
@@ -489,31 +549,56 @@ const finalizeSaleWithPayment = async () => {
     }
   }
 
-  // Validar pago mixto (solo si no hay avance)
-  if (paymentMethod === "mixto" && !tieneAvance) {
-    const usdAmount = parseFloat(mixedPayment.usd) || 0;
-    const vesAmount = parseFloat(mixedPayment.ves) || 0;
-    const vesEfectivoAmount = parseFloat(mixedPayment.vesEfectivo) || 0;
-    
-    const totalPaidUSD = usdAmount + (vesAmount / TASA_CAMBIO) + (vesEfectivoAmount / TASA_CAMBIO);
-    
-    if (Math.abs(totalPaidUSD - subtotalUSD) > 0.01) {
-      Toast.show({
-        type: "error",
-        text1: "Error",
-        text2: "La suma de los pagos no coincide con el total en USD",
-        position: "top",
-        visibilityTime: 3000,
-      });
-      return;
-    }
+  // Validar pago mixto
+  // Validar pago mixto
+if (paymentMethod === "mixto") {
+  if (isNaN(subtotalVES) || !isFinite(subtotalVES) || subtotalVES <= 0) {
+    Toast.show({
+      type: "error",
+      text1: "Error",
+      text2: "No se puede calcular el total de la venta",
+      position: "top",
+      visibilityTime: 3000,
+    });
+    return;
   }
+  
+  const usdAmount = parseFloat(mixedPayment.usd) || 0;
+  const vesAmount = parseFloat(mixedPayment.ves) || 0;
+  const vesEfectivoAmount = parseFloat(mixedPayment.vesEfectivo) || 0;
+  
+  // Convertir USD a VES
+  const usdEnVES = usdAmount * TASA_CAMBIO;
+  const totalPagadoVES = usdEnVES + vesAmount + vesEfectivoAmount;
+  
+  console.log('🔍 VALIDACIÓN PAGO MIXTO:', {
+    subtotalVES,
+    usdAmount,
+    vesAmount,
+    vesEfectivoAmount,
+    usdEnVES,
+    totalPagadoVES,
+    diferencia: Math.abs(totalPagadoVES - subtotalVES)
+  });
+  
+  // Tolerancia de 1 Bs. por redondeos
+  if (Math.abs(totalPagadoVES - subtotalVES) > 1) {
+    Toast.show({
+      type: "error",
+      text1: "Error",
+      text2: `La suma de los pagos (Bs. ${totalPagadoVES.toFixed(2)}) no coincide con el total (Bs. ${subtotalVES.toFixed(2)})`,
+      position: "top",
+      visibilityTime: 5000,
+    });
+    return;
+  }
+}
 
   setProcessing(true);
   try {
     // 1. Verificar stock para productos normales
     for (const item of cart) {
-      if (item.isAdvance) continue; // Saltar avance de efectivo
+      if (item.isAdvance || item.isRecharge) continue;
       
       const { data, error } = await supa
         .from("product")
@@ -539,109 +624,280 @@ const finalizeSaleWithPayment = async () => {
     // 2. Actualizar stock y crear movimientos
     for (const item of cart) {
       if (item.isAdvance) {
-        // Crear movimiento para avance de efectivo
+        // Movimiento para avance de efectivo
+        const movementData = {
+          productoID: 48,
+          tipoMovimiento: "salida",
+          cantidad: 1,
+          precioCompraUSD: 0,
+          precioVentaUSD: 0,
+          precioCompraVES: 0,
+          precioVentaVES: item.precioVentaVES,
+          precioVentaVESEfectivo: item.precioVentaVESEfectivo,
+          empresaID: empresaId,
+          tipoTransaccion: "Avance Efectivo",
+          pagoMovil: paymentMethod === "pagoMovil" ? parseInt(pagoMovilRef) : null,
+          observaciones: item.descripcion,
+          usuarioCedula: userData?.cedula
+        };
+        
+        console.log('📝 INSERTANDO AVANCE:', movementData);
+        
         const { error: movementError } = await supa
           .from("productMovement")
-          .insert({
-            productoID: 48,
-            tipoMovimiento: "salida",
-            cantidad: 1,
-            precioCompraUSD: 0,
-            precioVentaUSD: 0,
-            precioCompraVES: 0,
-            precioVentaVES: item.precioVentaVES, // Monto con interés (débito)
-            precioVentaVESEfectivo: item.precioVentaVESEfectivo, // Monto entregado (negativo)
-            empresaID: empresaId,
-            tipoTransaccion: "Avance Efectivo",
-            pagoMovil: paymentMethod === "pagoMovil" ? parseInt(pagoMovilRef) : null,
-            observaciones: item.descripcion,
-            usuarioCedula: userData?.cedula
-          });
+          .insert(movementData);
 
         if (movementError) throw movementError;
-      } else {
-        // Actualizar stock para productos normales
-        const { error: updateError } = await supa
-          .from("product")
-          .update({ stockActual: item.stockActual - item.quantity })
-          .eq("id", item.id);
+      } 
+else if (item.isRecharge) {
+  // Determinar valores según el método de pago seleccionado
+  let precioVentaUSD = 0;
+  let precioVentaVES = 0;
+  let precioVentaVESEfectivo = 0;
+  let tipoTransaccion = "";
+  
+  console.log('📱 Procesando recarga con método:', paymentMethod);
+  console.log('📱 Detalles de recarga:', item.rechargeDetails);
+  console.log('📱 mixedPayment actual:', mixedPayment);
+  
+  const totalConRecargo = item.rechargeDetails.totalConRecargo;
+  const montoOriginal = item.rechargeDetails.montoOriginal;
+  
+  switch (paymentMethod) {
+    case "debito":
+      // Todo el pago es en débito
+      precioVentaVES = totalConRecargo-montoOriginal; // Se descuenta el monto original
+      tipoTransaccion = "Recarga Débito";
+      console.log('  → Débito: Bs.', precioVentaVES, '(descuento del monto original)');
+      break;
+      
+    case "pagoMovil":
+      // Todo el pago es en pago móvil
+      precioVentaVES = totalConRecargo-montoOriginal; // Se descuenta el monto original
+      tipoTransaccion = "Recarga Pago Móvil";
+      console.log('  → Pago Móvil: Bs.', precioVentaVES, '(descuento del monto original)');
+      break;
+      
+    case "efectivoUSD":
+      // Pago en efectivo USD, no afecta débito
+      precioVentaVES = -montoOriginal; // No hay egreso de débito
+      precioVentaUSD = totalConRecargo / TASA_CAMBIO;
+      tipoTransaccion = "Recarga Efectivo USD";
+      console.log('  → Efectivo USD: $', precioVentaUSD);
+      break;
+      
+    case "efectivoVES":
+      // Pago en efectivo VES, no afecta débito
+      precioVentaVES = -montoOriginal; // No hay egreso de débito
+      precioVentaVESEfectivo = totalConRecargo;
+      tipoTransaccion = "Recarga Efectivo VES";
+      console.log('  → Efectivo VES: Bs.', precioVentaVESEfectivo);
+      break;
+      
+    case "mixto":
+      // Usar los valores de mixedPayment directamente
+      const usdAmount = parseFloat(mixedPayment.usd) || 0;
+      const vesAmount = parseFloat(mixedPayment.ves) || 0; // Monto pagado en débito
+      const vesEfectivoAmount = parseFloat(mixedPayment.vesEfectivo) || 0;
+      
+      console.log('  → Valores mixtos recibidos:', {
+        usdAmount,
+        vesAmount, // Este es el monto que el cliente pagó en débito
+        vesEfectivoAmount
+      });
+      
+      // Convertir USD a VES
+      const usdEnVES = usdAmount * TASA_CAMBIO;
+      
+      // Calcular total pagado en VES
+      const totalPagadoVES = usdEnVES + vesAmount + vesEfectivoAmount;
+      
+      console.log('  → Cálculos:', {
+        usdEnVES,
+        vesAmount,
+        vesEfectivoAmount,
+        totalPagadoVES,
+        subtotalVES,
+        montoOriginal
+      });
+      
+      // Para el débito: se descuenta el monto original MENOS lo que se pagó en débito
+      // porque el cliente pagó una parte en débito, entonces el egreso neto es menor
+      precioVentaVES = -(montoOriginal - vesAmount);
+      
+      // El ingreso se distribuye según corresponda
+      if (usdAmount > 0) {
+        precioVentaUSD = (totalConRecargo * (usdEnVES / totalPagadoVES)) / TASA_CAMBIO;
+      }
+      
+      if (vesEfectivoAmount > 0) {
+        precioVentaVESEfectivo = totalConRecargo * (vesEfectivoAmount / totalPagadoVES);
+      }
+      
+      tipoTransaccion = "Recarga Mixta";
+      
+      console.log('  → Resultado distribución:', {
+        montoOriginal,
+        pagadoEnDebito: vesAmount,
+        egresoNetoDebito: precioVentaVES,
+        precioVentaUSD,
+        precioVentaVESEfectivo
+      });
+      break;
+      
+    default:
+      console.log('  ⚠️ Método de pago no reconocido:', paymentMethod);
+      precioVentaVES = -montoOriginal; // Fallback
+      tipoTransaccion = "Recarga";
+      break;
+  }
+  
+  const movementData = {
+    productoID: 49,
+    tipoMovimiento: "salida",
+    cantidad: 1,
+    precioCompraUSD: 0,
+    precioVentaUSD: precioVentaUSD,
+    precioCompraVES: 0,
+    precioVentaVES: precioVentaVES, // Aquí va el egreso neto del débito
+    precioVentaVESEfectivo: precioVentaVESEfectivo,
+    empresaID: empresaId,
+    tipoTransaccion: tipoTransaccion,
+    pagoMovil: paymentMethod === "pagoMovil" ? parseInt(pagoMovilRef) : null,
+    observaciones: item.descripcion,
+    usuarioCedula: userData?.cedula
+  };
+  
+  console.log('📝 INSERTANDO RECARGA FINAL:', movementData);
+  
+  const { error: movementError } = await supa
+    .from("productMovement")
+    .insert(movementData);
 
-        if (updateError) throw updateError;
+  if (movementError) throw movementError;
+}
+      else {
+  // Productos normales - Actualizar stock
+  const { error: updateError } = await supa
+    .from("product")
+    .update({ stockActual: item.stockActual - item.quantity })
+    .eq("id", item.id);
 
-        let precioVentaUSD = 0;
-        let precioVentaVES = 0;
-        let precioVentaVESEfectivo = 0;
-        let tipoTransaccion = "";
-        let pagoMovil = null;
+  if (updateError) throw updateError;
 
-        switch (paymentMethod) {
-          case "debito":
-            precioVentaVES = item.precioVentaVES * item.quantity;
-            tipoTransaccion = "Debito";
-            break;
-          case "pagoMovil":
+  let precioVentaUSD = 0;
+  let precioVentaVES = 0;
+  let precioVentaVESEfectivo = 0;
+  let tipoTransaccion = "";
+  let pagoMovil = null;
+
+  // Calcular totales del item UNA SOLA VEZ
+  const itemTotalVES = (item.precioVentaVES || 0) * (item.quantity || 1);
+  const itemTotalUSD = (item.precioVentaUSD || 0) * (item.quantity || 1);
+
+  console.log('💰 Procesando producto:', {
+    nombre: item.nombre,
+    itemTotalVES,
+    itemTotalUSD,
+    paymentMethod
+  });
+
+  switch (paymentMethod) {
+    case "debito":
+      precioVentaVES = itemTotalVES;
+      tipoTransaccion = "Debito";
+      console.log('  → Débito: Bs.', precioVentaVES);
+      break;
+      
+    case "pagoMovil":
             precioVentaVES = item.precioVentaVES * item.quantity;
             tipoTransaccion = "Pago Movil";
             pagoMovil = parseInt(pagoMovilRef);
             break;
-          case "efectivoUSD":
-            precioVentaUSD = item.precioVentaUSD * item.quantity;
-            tipoTransaccion = "Efectivo USD";
-            break;
-          case "efectivoVES":
-            precioVentaVESEfectivo = item.precioVentaVES * item.quantity;
-            tipoTransaccion = "Efectivo VES";
-            break;
-          case "mixto":
-            const usdAmount = parseFloat(mixedPayment.usd) || 0;
-            const vesAmount = parseFloat(mixedPayment.ves) || 0;
-            const vesEfectivoAmount = parseFloat(mixedPayment.vesEfectivo) || 0;
-            
-            const usdProportion = usdAmount / subtotalUSD;
-            
-            const totalVESPagado = vesAmount + vesEfectivoAmount;
-            const vesProportion = totalVESPagado > 0 ? totalVESPagado / subtotalVES : 0;
-            
-            const vesDebitoProportion = vesAmount > 0 ? vesAmount / totalVESPagado : 0;
-            const vesEfectivoProportion = vesEfectivoAmount > 0 ? vesEfectivoAmount / totalVESPagado : 0;
-            
-            const itemTotalUSD = item.precioVentaUSD * item.quantity;
-            const itemTotalVES = item.precioVentaVES * item.quantity;
-            
-            precioVentaUSD = itemTotalUSD * usdProportion;
-            
-            if (totalVESPagado > 0) {
-              precioVentaVES = (itemTotalVES * vesProportion) * vesDebitoProportion;
-              precioVentaVESEfectivo = (itemTotalVES * vesProportion) * vesEfectivoProportion;
-            } else {
-              precioVentaVES = 0;
-              precioVentaVESEfectivo = 0;
-            }
-            
-            tipoTransaccion = "Mixto";
-            break;
-        }
-
-        const { error: movementError } = await supa
-          .from("productMovement")
-          .insert({
-            productoID: item.id,
-            tipoMovimiento: "salida",
-            cantidad: item.quantity,
-            precioCompraUSD: item.precioCompraUSD,
-            precioVentaUSD: precioVentaUSD,
-            precioCompraVES: item.precioCompraVES,
-            precioVentaVES: precioVentaVES,
-            precioVentaVESEfectivo: precioVentaVESEfectivo,
-            empresaID: empresaId,
-            tipoTransaccion: tipoTransaccion,
-            pagoMovil: pagoMovil,
-            observaciones: `Venta realizada por ${userData?.nombre || "usuario"}`,
-            usuarioCedula: userData?.cedula
-          });
-
-        if (movementError) throw movementError;
+      
+    case "efectivoUSD":
+      precioVentaUSD = itemTotalUSD;
+      tipoTransaccion = "Efectivo USD";
+      console.log('  → Efectivo USD: $', precioVentaUSD);
+      break;
+      
+    case "efectivoVES":
+      precioVentaVESEfectivo = itemTotalVES;
+      tipoTransaccion = "Efectivo VES";
+      console.log('  → Efectivo VES: Bs.', precioVentaVESEfectivo);
+      break;
+      
+    case "mixto":
+      const usdAmount = parseFloat(mixedPayment.usd) || 0;
+      const vesAmount = parseFloat(mixedPayment.ves) || 0;
+      const vesEfectivoAmount = parseFloat(mixedPayment.vesEfectivo) || 0;
+      
+      console.log('  → Valores mixtos:', { usdAmount, vesAmount, vesEfectivoAmount });
+      
+      // Convertir USD a VES
+      const usdEnVES = usdAmount * TASA_CAMBIO;
+      
+      // Proporciones basadas en el total pagado
+      const totalPagadoVES = usdEnVES + vesAmount + vesEfectivoAmount;
+      
+      if (totalPagadoVES <= 0) {
+        console.log('  ⚠️ totalPagadoVES es 0, usando fallback');
+        precioVentaVES = itemTotalVES;
+        tipoTransaccion = "Debito (fallback)";
+      } else {
+        const proporcionUSD = usdEnVES / totalPagadoVES;
+        const proporcionVESDebito = vesAmount / totalPagadoVES;
+        const proporcionVESEfectivo = vesEfectivoAmount / totalPagadoVES;
+        
+        // Aplicar proporciones al item actual
+        precioVentaUSD = (itemTotalVES * proporcionUSD) / TASA_CAMBIO;
+        precioVentaVES = itemTotalVES * proporcionVESDebito;
+        precioVentaVESEfectivo = itemTotalVES * proporcionVESEfectivo;
+        
+        tipoTransaccion = "Mixto";
+        
+        console.log('  → Distribución:', {
+          precioVentaUSD,
+          precioVentaVES,
+          precioVentaVESEfectivo
+        });
       }
+      break;
+      
+    default:
+      console.log('  ⚠️ Método no reconocido:', paymentMethod);
+      precioVentaVES = itemTotalVES;
+      tipoTransaccion = "Debito (default)";
+      break;
+  }
+
+  const movementData = {
+    productoID: item.id,
+    tipoMovimiento: "salida",
+    cantidad: item.quantity,
+    precioCompraUSD: item.precioCompraUSD || 0,
+    precioVentaUSD: precioVentaUSD,
+    precioCompraVES: item.precioCompraVES || 0,
+    precioVentaVES: precioVentaVES,
+    precioVentaVESEfectivo: precioVentaVESEfectivo,
+    empresaID: empresaId,
+    tipoTransaccion: tipoTransaccion,
+    pagoMovil: pagoMovil,
+    observaciones: `Venta realizada por ${userData?.nombre || "usuario"}`,
+    usuarioCedula: userData?.cedula
+  };
+  
+  console.log('📝 INSERTANDO MOVIMIENTO:', movementData);
+
+  const { error: movementError } = await supa
+    .from("productMovement")
+    .insert(movementData);
+
+  if (movementError) {
+    console.error('❌ Error insertando movimiento:', movementError);
+    throw movementError;
+  }
+}
     }
 
     // 3. Limpiar todo
@@ -662,7 +918,7 @@ const finalizeSaleWithPayment = async () => {
     loadAllData();
 
   } catch (error) {
-    console.error("Error finalizando venta:", error);
+    console.error("❌ ERROR FINALIZANDO VENTA:", error);
     Toast.show({
       type: "error",
       text1: "Error",
@@ -777,7 +1033,15 @@ const finalizeSaleWithPayment = async () => {
               onPress={() => setAdvanceModalVisible(true)}
             >
               <MaterialCommunityIcons name="cash-plus" size={24} color="white" />
-              <Text style={styles.actionButtonText}>Avance Efectivo</Text>
+              <Text style={styles.actionButtonText}>Avance</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity 
+              style={[styles.actionButton, styles.rechargeButton]}
+              onPress={() => setRechargeModalVisible(true)}
+            >
+              <MaterialCommunityIcons name="cellphone" size={24} color="white" />
+              <Text style={styles.actionButtonText}>Recarga</Text>
             </TouchableOpacity>
           </View>
 
@@ -793,7 +1057,8 @@ const finalizeSaleWithPayment = async () => {
                   <View style={styles.cartItemInfo}>
                     <Text style={[
                       styles.cartItemName,
-                      item.isAdvance && styles.advanceItemName
+                      item.isAdvance && styles.advanceItemName,
+                      item.isRecharge && styles.rechargeItemName
                     ]}>
                       {item.nombre}
                     </Text>
@@ -803,7 +1068,13 @@ const finalizeSaleWithPayment = async () => {
                         Interés: Bs. {item.advanceDetails.interes}
                       </Text>
                     )}
-                    {!item.isAdvance && (
+                    {item.isRecharge && item.rechargeDetails && (
+                      <Text style={styles.rechargeDetails}>
+                        Monto: Bs. {item.rechargeDetails.montoOriginal} | 
+                        Recargo 20%: Bs. {item.rechargeDetails.recargo}
+                      </Text>
+                    )}
+                    {!item.isAdvance && !item.isRecharge && (
                       <Text style={styles.cartItemPrice}>
                         ${item.precioVentaUSD} / Bs.{item.precioVentaVES} c/u
                       </Text>
@@ -811,7 +1082,7 @@ const finalizeSaleWithPayment = async () => {
                   </View>
                   
                   <View style={styles.cartItemControls}>
-                    {!item.isAdvance && (
+                    {!item.isAdvance && !item.isRecharge && (
                       <>
                         <TouchableOpacity 
                           style={styles.quantityButton}
@@ -839,27 +1110,39 @@ const finalizeSaleWithPayment = async () => {
                     </TouchableOpacity>
                   </View>
                   
-                  <View style={styles.cartItemTotals}>
-                    {item.isAdvance ? (
-                      <>
-                        <Text style={styles.advanceTotalDebito}>
-                          Débito: +Bs. {item.precioVentaVES}
-                        </Text>
-                        <Text style={styles.advanceTotalEfectivo}>
-                          Efectivo: {item.precioVentaVESEfectivo > 0 ? '+' : ''}{item.precioVentaVESEfectivo} Bs.
-                        </Text>
-                      </>
-                    ) : (
-                      <>
-                        <Text style={styles.cartItemTotalUSD}>
-                          USD: ${(item.precioVentaUSD * item.quantity).toFixed(2)}
-                        </Text>
-                        <Text style={styles.cartItemTotalVES}>
-                          VES: Bs. {(item.precioVentaVES * item.quantity).toFixed(2)}
-                        </Text>
-                      </>
-                    )}
-                  </View>
+               
+{/* En la sección del carrito, dentro del mapeo de items */}
+<View style={styles.cartItemTotals}>
+  {item.isAdvance ? (
+    // Avance de efectivo
+    <>
+      <Text style={styles.advanceTotalDebito}>
+        Débito: +Bs. {item.precioVentaVES}
+      </Text>
+      <Text style={styles.advanceTotalEfectivo}>
+        Efectivo: {item.precioVentaVESEfectivo > 0 ? '+' : ''}{item.precioVentaVESEfectivo} Bs.
+      </Text>
+    </>
+  ) : item.isRecharge ? (
+    // Recarga
+    <>
+      <Text style={styles.rechargeTotalDebito}>
+        Débito: {item.precioVentaVES} Bs. (egreso)
+      </Text>
+      
+    </>
+  ) : (
+    // Productos normales
+    <>
+      <Text style={styles.cartItemTotalUSD}>
+        USD: ${(item.precioVentaUSD * item.quantity).toFixed(2)}
+      </Text>
+      <Text style={styles.cartItemTotalVES}>
+        VES: Bs. {(item.precioVentaVES * item.quantity).toFixed(2)}
+      </Text>
+    </>
+  )}
+</View>
                 </View>
               ))
             ) : (
@@ -872,36 +1155,57 @@ const finalizeSaleWithPayment = async () => {
           </View>
 
           {/* Resumen de factura */}
-{/* Resumen de factura */}
-{cart.length > 0 && (
-  <View style={styles.summaryContainer}>
-    <Text style={styles.sectionTitle}>Resumen</Text>
-    
-    {cart.some(item => item.isAdvance) ? (
-      // Resumen especial para avance de efectivo
+          {cart.length > 0 && (
+            <View style={styles.summaryContainer}>
+              <Text style={styles.sectionTitle}>Resumen</Text>
+              
+              {cart.some(item => item.isAdvance) ? (
+                // Resumen para avance de efectivo
+                <>
+                  <View style={styles.summaryRow}>
+                    <Text style={styles.summaryLabel}>Monto entregado en efectivo:</Text>
+                    <Text style={styles.advanceTotalEfectivo}>
+                      -Bs. {Math.abs(cart.reduce((sum, item) => sum + (item.precioVentaVESEfectivo || 0), 0))}
+                    </Text>
+                  </View>
+                  <View style={styles.summaryRow}>
+                    <Text style={styles.summaryLabel}>Monto a débito (+20%):</Text>
+                    <Text style={styles.summaryValueVES}>
+                      +Bs. {cart.reduce((sum, item) => sum + (item.precioVentaVES || 0), 0)}
+                    </Text>
+                  </View>
+                  <View style={[styles.summaryRow, styles.totalRow]}>
+                    <Text style={styles.summaryLabel}>Total a pagar (débito):</Text>
+                    <Text style={styles.summaryValueVES}>
+                      Bs. {cart.reduce((sum, item) => sum + (item.precioVentaVES || 0), 0)}
+                    </Text>
+                  </View>
+                </>
+              ) : cart.some(item => item.isRecharge) ? (
+      // Resumen para recarga
       <>
         <View style={styles.summaryRow}>
-          <Text style={styles.summaryLabel}>Monto entregado en efectivo:</Text>
-          <Text style={styles.advanceTotalEfectivo}>
-            -Bs. {Math.abs(cart.reduce((sum, item) => sum + (item.precioVentaVESEfectivo || 0), 0))}
+          <Text style={styles.summaryLabel}>Egreso de débito (para recarga):</Text>
+          <Text style={styles.rechargeTotalDebito}>
+            -Bs. {Math.abs(cart.reduce((sum, item) => sum + (item.precioVentaVES || 0), 0))}
           </Text>
         </View>
         <View style={styles.summaryRow}>
-          <Text style={styles.summaryLabel}>Monto a débito (+20%):</Text>
+          <Text style={styles.summaryLabel}>Ingreso del cliente (con recargo):</Text>
           <Text style={styles.summaryValueVES}>
-            +Bs. {cart.reduce((sum, item) => sum + (item.precioVentaVES || 0), 0)}
+            +Bs. {cart.reduce((sum, item) => sum + (item.rechargeDetails?.totalConRecargo || 0), 0)}
           </Text>
         </View>
         <View style={[styles.summaryRow, styles.totalRow]}>
-          <Text style={styles.summaryLabel}>Total a pagar (débito):</Text>
+          <Text style={styles.summaryLabel}>Diferencia neta en débito:</Text>
           <Text style={styles.summaryValueVES}>
-            Bs. {cart.reduce((sum, item) => sum + (item.precioVentaVES || 0), 0)}
+            Bs. {cart.reduce((sum, item) => sum + (item.rechargeDetails?.totalConRecargo || 0) + (item.precioVentaVES || 0), 0)}
           </Text>
         </View>
         <View style={styles.infoRow}>
           <MaterialCommunityIcons name="information" size={16} color="#64748b" />
           <Text style={styles.infoText}>
-            El cliente recibe Bs. {Math.abs(cart.reduce((sum, item) => sum + (item.precioVentaVESEfectivo || 0), 0))} en efectivo y paga Bs. {cart.reduce((sum, item) => sum + (item.precioVentaVES || 0), 0)} con débito
+            El ingreso se aplicará según el método de pago seleccionado
           </Text>
         </View>
       </>
@@ -919,59 +1223,59 @@ const finalizeSaleWithPayment = async () => {
       </>
     )}
 
-    {/* Botón para seleccionar método de pago - siempre visible pero con opciones limitadas para avance */}
-    <TouchableOpacity 
-      style={styles.paymentButton}
-      onPress={handlePayment}
-    >
-      <MaterialCommunityIcons name="cash" size={24} color="white" />
-      <Text style={styles.paymentButtonText}>
-        {paymentMethod ? "Cambiar método de pago" : "Seleccionar método de pago"}
-      </Text>
-    </TouchableOpacity>
+              {/* Botón para seleccionar método de pago */}
+              <TouchableOpacity 
+                style={styles.paymentButton}
+                onPress={handlePayment}
+              >
+                <MaterialCommunityIcons name="cash" size={24} color="white" />
+                <Text style={styles.paymentButtonText}>
+                  {paymentMethod ? "Cambiar método de pago" : "Seleccionar método de pago"}
+                </Text>
+              </TouchableOpacity>
 
-    {paymentMethod && (
-      <View style={styles.selectedPayment}>
-        <Text style={styles.selectedPaymentText}>
-          Método seleccionado: {
-            paymentMethod === "debito" ? "Débito" :
-            paymentMethod === "pagoMovil" ? "Pago Móvil" :
-            paymentMethod === "efectivoUSD" ? "Efectivo USD" :
-            paymentMethod === "efectivoVES" ? "Efectivo VES" : "Mixto"
-          }
-        </Text>
-        {paymentMethod === "pagoMovil" && pagoMovilRef && (
-          <Text style={styles.selectedPaymentRef}>
-            Ref: ****{pagoMovilRef}
-          </Text>
-        )}
-      </View>
-    )}
+              {paymentMethod && (
+                <View style={styles.selectedPayment}>
+                  <Text style={styles.selectedPaymentText}>
+                    Método seleccionado: {
+                      paymentMethod === "debito" ? "Débito" :
+                      paymentMethod === "pagoMovil" ? "Pago Móvil" :
+                      paymentMethod === "efectivoUSD" ? "Efectivo USD" :
+                      paymentMethod === "efectivoVES" ? "Efectivo VES" : "Mixto"
+                    }
+                  </Text>
+                  {paymentMethod === "pagoMovil" && pagoMovilRef && (
+                    <Text style={styles.selectedPaymentRef}>
+                      Ref: ****{pagoMovilRef}
+                    </Text>
+                  )}
+                </View>
+              )}
 
-    <TouchableOpacity 
-      style={[
-        styles.finalizeButton, 
-        !paymentMethod && styles.finalizeButtonDisabled
-      ]}
-      onPress={finalizeSaleWithPayment}
-      disabled={processing || !paymentMethod}
-    >
-      {processing ? (
-        <ActivityIndicator size="small" color="white" />
-      ) : (
-        <>
-          <MaterialCommunityIcons name="check-circle" size={24} color="white" />
-          <Text style={styles.finalizeButtonText}>Finalizar Venta</Text>
-        </>
-      )}
-    </TouchableOpacity>
-  </View>
-)}
+              <TouchableOpacity 
+                style={[
+                  styles.finalizeButton, 
+                  !paymentMethod && styles.finalizeButtonDisabled
+                ]}
+                onPress={finalizeSaleWithPayment}
+                disabled={processing || !paymentMethod}
+              >
+                {processing ? (
+                  <ActivityIndicator size="small" color="white" />
+                ) : (
+                  <>
+                    <MaterialCommunityIcons name="check-circle" size={24} color="white" />
+                    <Text style={styles.finalizeButtonText}>Finalizar Venta</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            </View>
+          )}
 
         </ScrollView>
       </View>
 
-      {/* Modal de selección de productos */}
+      {/* Modales */}
       <ProductSelectionModal
         visible={modalVisible}
         onClose={() => setModalVisible(false)}
@@ -986,7 +1290,6 @@ const finalizeSaleWithPayment = async () => {
         }}
       />
 
-      {/* Modal para ingresar cantidad */}
       <Modal
         visible={quantityModalVisible}
         transparent={true}
@@ -1052,30 +1355,34 @@ const finalizeSaleWithPayment = async () => {
         </View>
       </Modal>
 
-      {/* Modal de avance de efectivo */}
       <AdvanceCashModal
         visible={advanceModalVisible}
         onClose={() => setAdvanceModalVisible(false)}
         onConfirm={addAdvanceCash}
       />
 
-      {/* Modal de método de pago */}
+      <RechargeModal
+        visible={rechargeModalVisible}
+        onClose={() => setRechargeModalVisible(false)}
+        onConfirm={addRecharge}
+        tasaCambio={TASA_CAMBIO}
+      />
+
       <PaymentMethodModal
-  visible={paymentModalVisible}
-  onClose={() => setPaymentModalVisible(false)}
-  subtotalUSD={subtotalUSD}
-  subtotalVES={subtotalVES}
-  paymentMethod={paymentMethod}
-  setPaymentMethod={setPaymentMethod}
-  pagoMovilRef={pagoMovilRef}
-  setPagoMovilRef={setPagoMovilRef}
-  mixedPayment={mixedPayment}
-  setMixedPayment={setMixedPayment}
-  tasaCambio={TASA_CAMBIO}
-  soloDebitoPagoMovil={cart.some(item => item.isAdvance)} // Nueva prop
-/>
+        visible={paymentModalVisible}
+        onClose={() => setPaymentModalVisible(false)}
+        subtotalUSD={subtotalUSD}
+        subtotalVES={subtotalVES}
+        paymentMethod={paymentMethod}
+        setPaymentMethod={setPaymentMethod}
+        pagoMovilRef={pagoMovilRef}
+        setPagoMovilRef={setPagoMovilRef}
+        mixedPayment={mixedPayment}
+        setMixedPayment={setMixedPayment}
+        tasaCambio={TASA_CAMBIO}
+        soloDebitoPagoMovil={cart.some(item => item.isAdvance)}
+      />
       
-      {/* Toast component */}
       <Toast />
     </SafeAreaView>
   );
@@ -1093,6 +1400,45 @@ const styles = StyleSheet.create({
   centerContent: {
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  rechargeButton: {
+    backgroundColor: '#9b59b6',
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 16,
+    borderRadius: 12,
+    gap: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  rechargeItemName: {
+    color: '#9b59b6',
+  },
+  rechargeDetails: {
+    fontSize: 12,
+    color: '#64748b',
+    marginTop: 2,
+  },
+  rechargeTotalDebito: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#e74c3c', // Rojo porque es un egreso
+  },
+  rechargeTotalIngreso: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#27ae60', // Verde porque es un ingreso
+  },
+  actionButtons: {
+    flexDirection: 'row',
+    gap: 8,
+    marginHorizontal: 16,
+    marginBottom: 20,
   },
   loadingText: {
     marginTop: 12,
@@ -1172,6 +1518,12 @@ const styles = StyleSheet.create({
     color: 'white',
     fontWeight: '600',
   },
+  rechargePendiente: {
+  fontSize: 12,
+  fontWeight: '600',
+  color: '#f39c12',
+  fontStyle: 'italic',
+},
   actionButtons: {
     flexDirection: 'row',
     gap: 12,

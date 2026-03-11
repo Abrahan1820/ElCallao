@@ -29,6 +29,7 @@ import TasaBCVScreen from "../Inventory/Components/TasaBCVScreen";
 import CreateProduct from "../Inventory/Components/CreateProduct";
 import AdjustStock from "../Inventory/Components/AdjustStock";
 import AdvanceCashModal from "../Inventory/Components/AdvanceCashModal";
+import RechargeModal from "../Inventory/Components/RechargeModal";
 
 
 
@@ -204,6 +205,7 @@ const Main = () => {
       <Stack.Screen name="CreateProduct" component={CreateProduct} options={{ headerShown: false }}></Stack.Screen>
       <Stack.Screen name="AdjustStock" component={AdjustStock} options={{ headerShown: false }}></Stack.Screen>
       <Stack.Screen name="AdvanceCashModal" component={AdvanceCashModal} options={{ headerShown: false }}></Stack.Screen>
+      <Stack.Screen name="RechargeModal" component={RechargeModal} options={{ headerShown: false }}></Stack.Screen>
       
       </Stack.Navigator>
       <Toast config={toastConfig} />

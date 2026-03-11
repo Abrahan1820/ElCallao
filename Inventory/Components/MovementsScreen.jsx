@@ -281,7 +281,6 @@ const getTransactionAmount = (movement) => {
     case 'Pago Movil':
     case 'PagoMóvil':
     case 'PagoMovil':
-      // Mostrar la referencia si existe
       if (movement.pagoMovil) {
         return `Bs. ${movement.precioVentaVES?.toFixed(2) || '0.00'} (REF: ${movement.pagoMovil})`;
       } else {
@@ -294,19 +293,35 @@ const getTransactionAmount = (movement) => {
       return `Bs. ${movement.precioVentaVESEfectivo?.toFixed(2) || '0.00'}`;
     case 'Avance Efectivo':
       const montoEntregado = movement.precioVentaVESEfectivo ? Math.abs(movement.precioVentaVESEfectivo) : 0;
-      if (movement.pagoMovil){
-        return `Bs. ${movement.precioVentaVES?.toFixed(2) || '0.00'} (Entregado: -Bs. ${montoEntregado}) (REF: ${movement.pagoMovil})`;
+      return `Bs. ${movement.precioVentaVES?.toFixed(2) || '0.00'} (Entregado: -Bs. ${montoEntregado})`;
+    
+    // Casos para recargas
+    case 'Recarga Débito':
+    case 'Recarga Pago Móvil':
+  const netoPagoMovil = movement.precioVentaVES || 0;
+  
+      // Si existe pagoMovil, mostrar la referencia
+      if (movement.pagoMovil) {
+        return `Bs. ${netoPagoMovil.toFixed(2)} (REF: ${movement.pagoMovil})`;
+      } else {
+        return `Bs. ${netoPagoMovil.toFixed(2)} (Ganancia por recarga)`;
       }
-      else{
-        return `Bs. ${movement.precioVentaVES?.toFixed(2) || '0.00'} (Entregado: -Bs. ${montoEntregado})`;
-      }
-      
+    
+    case 'Recarga Efectivo USD':
+      const egresoUSD = movement.precioVentaVES ? Math.abs(movement.precioVentaVES) : 0;
+      return `$${movement.precioVentaUSD?.toFixed(2) || '0.00'} (Egreso: -Bs. ${egresoUSD})`;
+    
+    case 'Recarga Efectivo VES':
+      const egresoVES = movement.precioVentaVES ? Math.abs(movement.precioVentaVES) : 0;
+      return `Bs. ${movement.precioVentaVESEfectivo?.toFixed(2) || '0.00'} (Egreso: -Bs. ${egresoVES})`;
+    
     case 'Mixto':
       const partes = [];
       if (movement.precioVentaUSD > 0) partes.push(`$${movement.precioVentaUSD.toFixed(2)}`);
       if (movement.precioVentaVES > 0) partes.push(`Bs.${movement.precioVentaVES.toFixed(2)} (D)`);
       if (movement.precioVentaVESEfectivo > 0) partes.push(`Bs.${movement.precioVentaVESEfectivo.toFixed(2)} (E)`);
       return partes.join(' + ') || 'Monto no disponible';
+    
     default:
       console.log('Tipo de transacción no manejado:', movement.tipoTransaccion);
       return 'Monto no disponible';
@@ -772,6 +787,17 @@ const styles = StyleSheet.create({
   movementInfo: {
     flex: 1,
   },
+  rechargeTotalDebito: {
+  fontSize: 14,
+  fontWeight: '600',
+  color: '#e74c3c', // Rojo para egreso
+},
+rechargePendiente: {
+  fontSize: 12,
+  fontWeight: '600',
+  color: '#f39c12',
+  fontStyle: 'italic',
+},
   productName: {
     fontSize: 16,
     fontWeight: '600',

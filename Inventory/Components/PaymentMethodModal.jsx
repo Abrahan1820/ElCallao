@@ -22,7 +22,7 @@ const PaymentMethodModal = ({
   mixedPayment,
   setMixedPayment,
   tasaCambio,
-  soloDebitoPagoMovil, // Prop para filtrar opciones
+  soloDebitoPagoMovil,
 }) => {
   
   const handleSelectMethod = (method) => {
@@ -78,15 +78,31 @@ const PaymentMethodModal = ({
         { value: "mixto", label: "Mixto", icon: "swap-horizontal", color: "#e67e22", subtitle: "Combinación de USD y VES" }
       ];
 
+const totalUSDValido = !isNaN(subtotalUSD) && isFinite(subtotalUSD) && subtotalUSD > 0 ? subtotalUSD : 0;
+const totalVESValido = !isNaN(subtotalVES) && isFinite(subtotalVES) && subtotalVES > 0 ? subtotalVES : 0;
+
   // Validar si el pago mixto es correcto
-  const isMixedPaymentValid = () => {
-    const usd = parseFloat(mixedPayment.usd) || 0;
-    const ves = parseFloat(mixedPayment.ves) || 0;
-    const vesEfectivo = parseFloat(mixedPayment.vesEfectivo) || 0;
-    
-    const totalUSD = usd + (ves / tasaCambio) + (vesEfectivo / tasaCambio);
-    return Math.abs(totalUSD - subtotalUSD) <= 0.01;
-  };
+ // Validar si el pago mixto es correcto
+const isMixedPaymentValid = () => {
+  // Si el total es 0 o no es válido, no permitir pago mixto
+  if (totalUSDValido <= 0) {
+    return false;
+  }
+  
+  const usd = parseFloat(mixedPayment.usd) || 0;
+  const ves = parseFloat(mixedPayment.ves) || 0;
+  const vesEfectivo = parseFloat(mixedPayment.vesEfectivo) || 0;
+  
+  // Calcular el total pagado en USD (convertimos VES a USD)
+  const totalPagadoUSD = usd + (ves / tasaCambio) + (vesEfectivo / tasaCambio);
+  
+  // Verificar que sea aproximadamente igual al total
+  const diferencia = Math.abs(totalPagadoUSD - totalUSDValido);
+  console.log('Total USD (desde VES):', totalUSDValido, 'Pagado USD:', totalPagadoUSD, 'Diferencia:', diferencia);
+  
+  return diferencia <= 0.01;
+};
+
 
   // Validar referencia de pago móvil
   const isPagoMovilValid = () => {
@@ -94,45 +110,70 @@ const PaymentMethodModal = ({
   };
 
   // Calcular faltante para pago mixto
-  const calcularFaltante = () => {
-    const usd = parseFloat(mixedPayment.usd) || 0;
-    const ves = parseFloat(mixedPayment.ves) || 0;
-    const vesEfectivo = parseFloat(mixedPayment.vesEfectivo) || 0;
-    
-    const totalPagadoUSD = usd + (ves / tasaCambio) + (vesEfectivo / tasaCambio);
-    const diferenciaUSD = subtotalUSD - totalPagadoUSD;
-    
-    if (Math.abs(diferenciaUSD) <= 0.01) return null;
-    
-    if (usd > 0 && ves === 0 && vesEfectivo === 0) {
-      const vesFaltante = diferenciaUSD * tasaCambio;
+// Calcular faltante para pago mixto
+// Calcular faltante para pago mixto
+// Calcular faltante para pago mixto
+const calcularFaltante = () => {
+  if (totalUSDValido <= 0) {
+    return {
+      mensaje: `El total de la venta es Bs. ${totalVESValido.toFixed(2)} (equivalente a $${totalUSDValido.toFixed(2)})`,
+      monto: 0,
+      moneda: 'INFO'
+    };
+  }
+  
+  const usd = parseFloat(mixedPayment.usd) || 0;
+  const ves = parseFloat(mixedPayment.ves) || 0;
+  const vesEfectivo = parseFloat(mixedPayment.vesEfectivo) || 0;
+  
+  const totalPagadoUSD = usd + (ves / tasaCambio) + (vesEfectivo / tasaCambio);
+  const diferenciaUSD = totalUSDValido - totalPagadoUSD;
+  
+  // Si la diferencia es muy pequeña, consideramos que está completo
+  if (Math.abs(diferenciaUSD) <= 0.01) return null;
+  
+  // Si no hay nada ingresado, mostrar mensaje de que falta todo
+  if (usd === 0 && ves === 0 && vesEfectivo === 0) {
+    return {
+      mensaje: `Faltan $${totalUSDValido.toFixed(2)} en USD o Bs. ${(totalUSDValido * tasaCambio).toFixed(2)} en VES`,
+      monto: totalUSDValido,
+      moneda: 'CUALQUIERA'
+    };
+  }
+  
+  // Determinar qué moneda sugerir basado en lo que ya se ingresó
+  if (usd > 0 && ves === 0 && vesEfectivo === 0) {
+    // Si solo puso USD, sugerir VES
+    const vesFaltante = diferenciaUSD * tasaCambio;
+    return {
+      mensaje: `Faltan Bs. ${vesFaltante.toFixed(2)} en VES`,
+      monto: vesFaltante,
+      moneda: 'VES'
+    };
+  } else if ((ves > 0 || vesEfectivo > 0) && usd === 0) {
+    // Si solo puso VES, sugerir USD
+    return {
+      mensaje: `Faltan $${diferenciaUSD.toFixed(2)} en USD`,
+      monto: diferenciaUSD,
+      moneda: 'USD'
+    };
+  } else {
+    // Si tiene ambas, sugerir la que haga falta
+    if (diferenciaUSD > 0) {
       return {
-        mensaje: `Faltan Bs. ${vesFaltante.toFixed(2)} en VES`,
-        monto: vesFaltante,
-        moneda: 'VES'
-      };
-    } else if ((ves > 0 || vesEfectivo > 0) && usd === 0) {
-      return {
-        mensaje: `Faltan $${diferenciaUSD.toFixed(2)} en USD`,
+        mensaje: `Faltan $${diferenciaUSD.toFixed(2)} en USD o Bs. ${(diferenciaUSD * tasaCambio).toFixed(2)} en VES`,
         monto: diferenciaUSD,
-        moneda: 'USD'
+        moneda: 'CUALQUIERA'
       };
     } else {
-      if (diferenciaUSD > 0) {
-        return {
-          mensaje: `Faltan $${diferenciaUSD.toFixed(2)} en USD o Bs. ${(diferenciaUSD * tasaCambio).toFixed(2)} en VES`,
-          monto: diferenciaUSD,
-          moneda: 'CUALQUIERA'
-        };
-      } else {
-        return {
-          mensaje: `Sobran $${Math.abs(diferenciaUSD).toFixed(2)}`,
-          monto: Math.abs(diferenciaUSD),
-          moneda: 'SOBRA'
-        };
-      }
+      return {
+        mensaje: `Sobran $${Math.abs(diferenciaUSD).toFixed(2)}`,
+        monto: Math.abs(diferenciaUSD),
+        moneda: 'SOBRA'
+      };
     }
-  };
+  }
+};
 
   return (
     <Modal
@@ -152,17 +193,21 @@ const PaymentMethodModal = ({
 
           <ScrollView showsVerticalScrollIndicator={false}>
             <View style={styles.totalContainer}>
-              <View style={styles.totalBox}>
-                <Text style={styles.totalLabel}>Total USD</Text>
-                <Text style={styles.totalValueUSD}>${subtotalUSD.toFixed(2)}</Text>
-              </View>
-              <View style={styles.totalBox}>
-                <Text style={styles.totalLabel}>Total VES</Text>
-                <Text style={styles.totalValueVES}>Bs. {subtotalVES.toFixed(2)}</Text>
-              </View>
-            </View>
+  <View style={styles.totalBox}>
+    <Text style={styles.totalLabel}>Total VES</Text>
+    <Text style={styles.totalValueVES}>
+      Bs. {totalVESValido.toFixed(2)}
+    </Text>
+  </View>
+  <View style={styles.totalBox}>
+    <Text style={styles.totalLabel}>Total USD (aprox.)</Text>
+    <Text style={styles.totalValueUSD}>
+      ${totalUSDValido.toFixed(2)}
+    </Text>
+  </View>
+</View>
 
-            {/* Opciones de pago - AHORA USANDO opcionesPago */}
+            {/* Opciones de pago */}
             <View style={styles.optionsContainer}>
               {opcionesPago.map((opcion) => (
                 <TouchableOpacity
@@ -226,77 +271,90 @@ const PaymentMethodModal = ({
               </View>
             )}
 
-            {/* Campos para pago mixto - solo mostrar si está disponible */}
-            {paymentMethod === "mixto" && !soloDebitoPagoMovil && (
-              <View style={styles.mixedContainer}>
-                <Text style={styles.mixedTitle}>Distribuir pago:</Text>
-                
-                <View style={styles.mixedRow}>
-                  <Text style={styles.mixedLabel}>USD:</Text>
-                  <TextInput
-                    style={styles.mixedInput}
-                    value={mixedPayment.usd}
-                    onChangeText={(text) => setMixedPayment({ ...mixedPayment, usd: text })}
-                    keyboardType="numeric"
-                    placeholder="0.00"
-                    placeholderTextColor="#94a3b8"
-                  />
-                </View>
+            {/* Campos para pago mixto */}
+            {/* Campos para pago mixto */}
+{paymentMethod === "mixto" && (
+  <View style={styles.mixedContainer}>
+    <Text style={styles.mixedTitle}>Distribuir pago:</Text>
+    
+    {totalUSDValido <= 0 ? (
+      <View style={styles.warningContainer}>
+        <MaterialCommunityIcons name="alert-circle" size={20} color="#e74c3c" />
+        <Text style={styles.warningText}>
+          No hay productos en USD para realizar pago mixto.
+        </Text>
+      </View>
+    ) : (
+      <>
+        <View style={styles.mixedRow}>
+          <Text style={styles.mixedLabel}>USD:</Text>
+          <TextInput
+            style={styles.mixedInput}
+            value={mixedPayment.usd}
+            onChangeText={(text) => setMixedPayment({ ...mixedPayment, usd: text })}
+            keyboardType="numeric"
+            placeholder="0.00"
+            placeholderTextColor="#94a3b8"
+          />
+        </View>
 
-                <View style={styles.mixedRow}>
-                  <Text style={styles.mixedLabel}>VES (Débito):</Text>
-                  <TextInput
-                    style={styles.mixedInput}
-                    value={mixedPayment.ves}
-                    onChangeText={(text) => setMixedPayment({ ...mixedPayment, ves: text })}
-                    keyboardType="numeric"
-                    placeholder="0.00"
-                    placeholderTextColor="#94a3b8"
-                  />
-                </View>
+        <View style={styles.mixedRow}>
+          <Text style={styles.mixedLabel}>VES (Débito):</Text>
+          <TextInput
+            style={styles.mixedInput}
+            value={mixedPayment.ves}
+            onChangeText={(text) => setMixedPayment({ ...mixedPayment, ves: text })}
+            keyboardType="numeric"
+            placeholder="0.00"
+            placeholderTextColor="#94a3b8"
+          />
+        </View>
 
-                <View style={styles.mixedRow}>
-                  <Text style={styles.mixedLabel}>VES (Efectivo):</Text>
-                  <TextInput
-                    style={styles.mixedInput}
-                    value={mixedPayment.vesEfectivo}
-                    onChangeText={(text) => setMixedPayment({ ...mixedPayment, vesEfectivo: text })}
-                    keyboardType="numeric"
-                    placeholder="0.00"
-                    placeholderTextColor="#94a3b8"
-                  />
-                </View>
+        <View style={styles.mixedRow}>
+          <Text style={styles.mixedLabel}>VES (Efectivo):</Text>
+          <TextInput
+            style={styles.mixedInput}
+            value={mixedPayment.vesEfectivo}
+            onChangeText={(text) => setMixedPayment({ ...mixedPayment, vesEfectivo: text })}
+            keyboardType="numeric"
+            placeholder="0.00"
+            placeholderTextColor="#94a3b8"
+          />
+        </View>
 
-                <Text style={styles.mixedHint}>
-                  * Total USD: ${subtotalUSD.toFixed(2)} (tasa: 1 USD = {tasaCambio} VES)
-                </Text>
-                
-                {(() => {
-                  const faltante = calcularFaltante();
-                  if (!faltante) {
-                    return (
-                      <Text style={styles.mixedSuccess}>
-                        ✓ Pago completo
-                      </Text>
-                    );
-                  }
-                  
-                  if (faltante.moneda === 'SOBRA') {
-                    return (
-                      <Text style={styles.mixedWarning}>
-                        ⚠ Sobran ${faltante.monto.toFixed(2)} USD
-                      </Text>
-                    );
-                  }
-                  
-                  return (
-                    <Text style={styles.mixedInfo}>
-                      💡 {faltante.mensaje}
-                    </Text>
-                  );
-                })()}
-              </View>
-            )}
+        <Text style={styles.mixedHint}>
+  * Total VES: Bs. {totalVESValido.toFixed(2)} | 1 USD = {tasaCambio} VES
+</Text>
+        
+        {/* Indicador de faltante/sobrante */}
+        {(() => {
+          const faltante = calcularFaltante();
+          if (!faltante) {
+            return (
+              <Text style={styles.mixedSuccess}>
+                ✓ Pago completo
+              </Text>
+            );
+          }
+          
+          if (faltante.moneda === 'SOBRA') {
+            return (
+              <Text style={styles.mixedWarning}>
+                ⚠ Sobran ${faltante.monto.toFixed(2)} USD
+              </Text>
+            );
+          }
+          
+          return (
+            <Text style={styles.mixedInfo}>
+              💡 {faltante.mensaje}
+            </Text>
+          );
+        })()}
+      </>
+    )}
+  </View>
+)}
           </ScrollView>
 
           <View style={styles.modalFooter}>
