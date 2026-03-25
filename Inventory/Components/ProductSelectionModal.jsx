@@ -32,13 +32,9 @@ const ProductSelectionModal = ({
     
     return (
       <TouchableOpacity
-        style={[
-          styles.productItem,
-          item.stockActual === 0 && styles.productDisabled
-        ]}
-        onPress={() => item.stockActual > 0 && onSelectProduct(item)}
-        disabled={item.stockActual === 0}
-      >
+  style={styles.productItem}
+  onPress={() => onSelectProduct(item)}
+>
         <View style={styles.productInfo}>
           <Text style={styles.productName}>{item.nombre}</Text>
           <Text style={styles.productCategory}>

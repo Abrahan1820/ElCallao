@@ -366,40 +366,61 @@ useEffect(() => {
     setTempQuantity("1");
   };
 
-  // -----------------------------
   // 💰 Agregar avance de efectivo al carrito
-  // -----------------------------
-  const addAdvanceCash = (monto) => {
-    const montoConInteres = Math.ceil(monto * 1.2);
-    const interes = montoConInteres - monto;
+const addAdvanceCash = (monto) => {
+  const montoConInteres = Math.ceil(monto * 1.2);
+  const interes = montoConInteres - monto;
+  
+  // Calcular valores en USD
+  const precioCompraUSD = monto / TASA_CAMBIO;           // Lo que entregamos en efectivo (costo en USD)
+  const precioVendidoUSD = montoConInteres / TASA_CAMBIO; // Lo que cobramos por débito (venta en USD)
+  
+  const advanceProduct = {
+    id: 'advance-cash',
+    nombre: '💰 AVANCE DE EFECTIVO',
+    descripcion: `Avance de efectivo - Monto entregado: Bs. ${monto}.`,
     
-    const advanceProduct = {
-      id: 'advance-cash',
-      nombre: '💰 AVANCE DE EFECTIVO',
-      descripcion: `Avance de efectivo - Monto entregado: Bs. ${monto}.`,
-      precioVentaUSD: 0,
-      precioVentaVES: montoConInteres,
-      precioVentaVESEfectivo: -monto,
-      cantidad: 1,
-      isAdvance: true,
-      advanceDetails: {
-        montoEntregado: monto,
-        interes: interes,
-        totalConInteres: montoConInteres
-      }
-    };
-
-    setCart([...cart, advanceProduct]);
-    setAdvanceModalVisible(false);
+    // Precios para cálculo de ganancia en USD
+    precioCompraUSD: precioCompraUSD,    // Costo en USD (lo que entregamos)
+    precioVendidoUSD: precioVendidoUSD,  // Precio de venta en USD (lo que cobramos)
     
-    Toast.show({
-      type: "success",
-      text1: "Avance agregado",
-      text2: `Monto: Bs. ${monto} + 20% (Bs. ${interes}) = Bs. ${montoConInteres}`,
-      position: "top",
-      visibilityTime: 4000,
-    });
+    // Mantener los campos existentes como estaban
+    precioVentaUSD: 0,
+    precioVentaVES: montoConInteres,
+    precioVentaVESEfectivo: -monto,
+    
+    cantidad: 1,
+    isAdvance: true,
+    advanceDetails: {
+      montoEntregado: monto,
+      interes: interes,
+      totalConInteres: montoConInteres,
+      precioCompraUSD: precioCompraUSD,
+      precioVendidoUSD: precioVendidoUSD
+    }
   };
+
+  console.log('💰 Agregando avance al carrito:', advanceProduct);
+  console.log('📊 Cálculos avance:', {
+    montoEntregado: monto,
+    montoConInteres,
+    tasa: TASA_CAMBIO,
+    precioCompraUSD,
+    precioVendidoUSD,
+    gananciaUSD: precioVendidoUSD - precioCompraUSD
+  });
+
+  setCart([...cart, advanceProduct]);
+  setAdvanceModalVisible(false);
+  
+  Toast.show({
+    type: "success",
+    text1: "Avance agregado",
+    text2: `Monto: Bs. ${monto} + 20% (Bs. ${interes}) = Bs. ${montoConInteres}. Ganancia: $${(precioVendidoUSD - precioCompraUSD).toFixed(2)}`,
+    position: "top",
+    visibilityTime: 4000,
+  });
+};
 
 
 // 📱 Agregar recarga al carrito
@@ -407,17 +428,30 @@ const addRecharge = (monto) => {
   const montoConRecargo = Math.ceil(monto * 1.2);
   const recargo = montoConRecargo - monto;
   
+  // Calcular valores en USD
+  const precioCompraUSD = monto / TASA_CAMBIO;      // Lo que cuesta la recarga en USD
+  const precioVendidoUSD = montoConRecargo / TASA_CAMBIO;  // Lo que se vende en USD
+  
   const rechargeProduct = {
     id: 'recharge-service',
     nombre: '📱 RECARGA DE SERVICIO',
     descripcion: `Recarga - Monto: Bs. ${monto} (Cliente paga: Bs. ${montoConRecargo})`,
+    
+    // Precios para cálculo de ganancia en USD
+    precioCompraUSD: precioCompraUSD,    // Costo en USD
+    precioVendidoUSD: precioVendidoUSD,  // Precio de venta en USD
+    
+    // Mantener los campos existentes como estaban
     precioVentaUSD: 0,
     precioVentaVES: -monto,
     precioVentaVESEfectivo: 0,
+    
     rechargeDetails: {
       montoOriginal: monto,
       recargo: recargo,
-      totalConRecargo: montoConRecargo
+      totalConRecargo: montoConRecargo,
+      precioCompraUSD: precioCompraUSD,
+      precioVendidoUSD: precioVendidoUSD
     },
     cantidad: 1,
     isRecharge: true
@@ -624,31 +658,42 @@ if (paymentMethod === "mixto") {
     // 2. Actualizar stock y crear movimientos
     for (const item of cart) {
       if (item.isAdvance) {
-        // Movimiento para avance de efectivo
-        const movementData = {
-          productoID: 48,
-          tipoMovimiento: "salida",
-          cantidad: 1,
-          precioCompraUSD: 0,
-          precioVentaUSD: 0,
-          precioCompraVES: 0,
-          precioVentaVES: item.precioVentaVES,
-          precioVentaVESEfectivo: item.precioVentaVESEfectivo,
-          empresaID: empresaId,
-          tipoTransaccion: "Avance Efectivo",
-          pagoMovil: paymentMethod === "pagoMovil" ? parseInt(pagoMovilRef) : null,
-          observaciones: item.descripcion,
-          usuarioCedula: userData?.cedula
-        };
-        
-        console.log('📝 INSERTANDO AVANCE:', movementData);
-        
-        const { error: movementError } = await supa
-          .from("productMovement")
-          .insert(movementData);
+  // Obtener valores en USD desde advanceDetails
+  const precioCompraUSD = item.advanceDetails?.precioCompraUSD || (Math.abs(item.precioVentaVESEfectivo) / TASA_CAMBIO);
+  const precioVendidoUSD = item.advanceDetails?.precioVendidoUSD || (item.precioVentaVES / TASA_CAMBIO);
+  
+  // Movimiento para avance de efectivo
+  const movementData = {
+    productoID: 48,
+    tipoMovimiento: "salida",
+    cantidad: 1,
+    
+    // NUEVOS CAMPOS: precioCompraUSD y precioVendido para calcular ganancia
+    precioCompraUSD: precioCompraUSD,      // Lo que entregamos en efectivo (costo en USD)
+    precioVendido: precioVendidoUSD,       // Lo que cobramos por débito (venta en USD)
+    
+    // Mantener los campos existentes como estaban
+    precioVentaUSD: 0,
+    precioCompraVES: 0,
+    precioVentaVES: item.precioVentaVES,              // Monto a cobrar por débito
+    precioVentaVESEfectivo: item.precioVentaVESEfectivo, // Monto entregado en efectivo (negativo)
+    
+    empresaID: empresaId,
+    tipoTransaccion: "Avance Efectivo",
+    pagoMovil: paymentMethod === "pagoMovil" ? parseInt(pagoMovilRef) : null,
+    observaciones: `Avance de efectivo: Entrega Bs. ${Math.abs(item.precioVentaVESEfectivo)} + 20% = Cobro Bs. ${item.precioVentaVES}. Costo USD: $${precioCompraUSD.toFixed(2)} | Venta USD: $${precioVendidoUSD.toFixed(2)} | Ganancia USD: $${(precioVendidoUSD - precioCompraUSD).toFixed(2)}`,
+    usuarioCedula: userData?.cedula
+  };
+  
+  console.log('📝 INSERTANDO AVANCE CON GANANCIA:', movementData);
+  console.log('💵 GANANCIA ESPERADA USD:', precioVendidoUSD - precioCompraUSD);
+  
+  const { error: movementError } = await supa
+    .from("productMovement")
+    .insert(movementData);
 
-        if (movementError) throw movementError;
-      } 
+  if (movementError) throw movementError;
+}
 else if (item.isRecharge) {
   // Determinar valores según el método de pago seleccionado
   let precioVentaUSD = 0;
@@ -663,17 +708,21 @@ else if (item.isRecharge) {
   const totalConRecargo = item.rechargeDetails.totalConRecargo;
   const montoOriginal = item.rechargeDetails.montoOriginal;
   
+  // Obtener valores en USD para guardar
+  const precioCompraUSD = item.rechargeDetails.precioCompraUSD || (montoOriginal / TASA_CAMBIO);
+  const precioVendidoUSD = item.rechargeDetails.precioVendidoUSD || (totalConRecargo / TASA_CAMBIO);
+  
   switch (paymentMethod) {
     case "debito":
       // Todo el pago es en débito
-      precioVentaVES = totalConRecargo-montoOriginal; // Se descuenta el monto original
+      precioVentaVES = totalConRecargo - montoOriginal; // Se descuenta el monto original
       tipoTransaccion = "Recarga Débito";
       console.log('  → Débito: Bs.', precioVentaVES, '(descuento del monto original)');
       break;
       
     case "pagoMovil":
       // Todo el pago es en pago móvil
-      precioVentaVES = totalConRecargo-montoOriginal; // Se descuenta el monto original
+      precioVentaVES = totalConRecargo - montoOriginal; // Se descuenta el monto original
       tipoTransaccion = "Recarga Pago Móvil";
       console.log('  → Pago Móvil: Bs.', precioVentaVES, '(descuento del monto original)');
       break;
@@ -697,12 +746,12 @@ else if (item.isRecharge) {
     case "mixto":
       // Usar los valores de mixedPayment directamente
       const usdAmount = parseFloat(mixedPayment.usd) || 0;
-      const vesAmount = parseFloat(mixedPayment.ves) || 0; // Monto pagado en débito
+      const vesAmount = parseFloat(mixedPayment.ves) || 0;
       const vesEfectivoAmount = parseFloat(mixedPayment.vesEfectivo) || 0;
       
       console.log('  → Valores mixtos recibidos:', {
         usdAmount,
-        vesAmount, // Este es el monto que el cliente pagó en débito
+        vesAmount,
         vesEfectivoAmount
       });
       
@@ -722,7 +771,6 @@ else if (item.isRecharge) {
       });
       
       // Para el débito: se descuenta el monto original MENOS lo que se pagó en débito
-      // porque el cliente pagó una parte en débito, entonces el egreso neto es menor
       precioVentaVES = -(montoOriginal - vesAmount);
       
       // El ingreso se distribuye según corresponda
@@ -747,7 +795,7 @@ else if (item.isRecharge) {
       
     default:
       console.log('  ⚠️ Método de pago no reconocido:', paymentMethod);
-      precioVentaVES = -montoOriginal; // Fallback
+      precioVentaVES = -montoOriginal;
       tipoTransaccion = "Recarga";
       break;
   }
@@ -756,19 +804,25 @@ else if (item.isRecharge) {
     productoID: 49,
     tipoMovimiento: "salida",
     cantidad: 1,
-    precioCompraUSD: 0,
-    precioVentaUSD: precioVentaUSD,
+    
+    // NUEVOS CAMPOS: precioCompraUSD y precioVendido (precioVentaUSD se mantiene para el método de pago)
+    precioCompraUSD: precioCompraUSD,      // Costo de la recarga en USD
+    precioVendido: precioVendidoUSD,    // Precio de venta en USD
+    
+    // Mantener los campos existentes como estaban
+    precioVentaUSD: precioVentaUSD,        // Para pago en efectivo USD
     precioCompraVES: 0,
-    precioVentaVES: precioVentaVES, // Aquí va el egreso neto del débito
-    precioVentaVESEfectivo: precioVentaVESEfectivo,
+    precioVentaVES: precioVentaVES,        // Egreso neto del débito
+    precioVentaVESEfectivo: precioVentaVESEfectivo, // Para pago en efectivo VES
+    
     empresaID: empresaId,
     tipoTransaccion: tipoTransaccion,
     pagoMovil: paymentMethod === "pagoMovil" ? parseInt(pagoMovilRef) : null,
-    observaciones: item.descripcion,
+    observaciones: `Recarga: Bs. ${item.rechargeDetails.montoOriginal} + 20% = Bs. ${item.rechargeDetails.totalConRecargo}. Costo USD: $${precioCompraUSD.toFixed(2)} | Venta USD: $${precioVendidoUSD.toFixed(2)} | Ganancia USD: $${(precioVendidoUSD - precioCompraUSD).toFixed(2)}`,
     usuarioCedula: userData?.cedula
   };
   
-  console.log('📝 INSERTANDO RECARGA FINAL:', movementData);
+  console.log('📝 INSERTANDO RECARGA:', movementData);
   
   const { error: movementError } = await supa
     .from("productMovement")
@@ -776,7 +830,7 @@ else if (item.isRecharge) {
 
   if (movementError) throw movementError;
 }
-      else {
+ else {
   // Productos normales - Actualizar stock
   const { error: updateError } = await supa
     .from("product")
@@ -790,41 +844,51 @@ else if (item.isRecharge) {
   let precioVentaVESEfectivo = 0;
   let tipoTransaccion = "";
   let pagoMovil = null;
+  let precioVendidoUSD = 0; // Nuevo: precio real de venta en USD
 
-  // Calcular totales del item UNA SOLA VEZ
+  // Calcular totales del item
   const itemTotalVES = (item.precioVentaVES || 0) * (item.quantity || 1);
   const itemTotalUSD = (item.precioVentaUSD || 0) * (item.quantity || 1);
+  
+  // Precio de compra en USD (costo del producto)
+  const precioCompraUSD = item.precioCompraUSD || 0;
 
   console.log('💰 Procesando producto:', {
     nombre: item.nombre,
     itemTotalVES,
     itemTotalUSD,
+    precioCompraUSD,
     paymentMethod
   });
 
   switch (paymentMethod) {
     case "debito":
       precioVentaVES = itemTotalVES;
+      precioVendidoUSD = itemTotalVES / TASA_CAMBIO; // El precio real en USD
       tipoTransaccion = "Debito";
-      console.log('  → Débito: Bs.', precioVentaVES);
+      console.log('  → Débito: Bs.', precioVentaVES, '| USD:', precioVendidoUSD);
       break;
       
     case "pagoMovil":
-            precioVentaVES = item.precioVentaVES * item.quantity;
-            tipoTransaccion = "Pago Movil";
-            pagoMovil = parseInt(pagoMovilRef);
-            break;
+      precioVentaVES = itemTotalVES;
+      precioVendidoUSD = itemTotalVES / TASA_CAMBIO;
+      tipoTransaccion = "Pago Movil";
+      pagoMovil = parseInt(pagoMovilRef);
+      console.log('  → Pago Móvil: Bs.', precioVentaVES, '| USD:', precioVendidoUSD);
+      break;
       
     case "efectivoUSD":
       precioVentaUSD = itemTotalUSD;
+      precioVendidoUSD = itemTotalUSD; // Ya está en USD
       tipoTransaccion = "Efectivo USD";
       console.log('  → Efectivo USD: $', precioVentaUSD);
       break;
       
     case "efectivoVES":
       precioVentaVESEfectivo = itemTotalVES;
+      precioVendidoUSD = itemTotalVES / TASA_CAMBIO;
       tipoTransaccion = "Efectivo VES";
-      console.log('  → Efectivo VES: Bs.', precioVentaVESEfectivo);
+      console.log('  → Efectivo VES: Bs.', precioVentaVESEfectivo, '| USD:', precioVendidoUSD);
       break;
       
     case "mixto":
@@ -843,6 +907,7 @@ else if (item.isRecharge) {
       if (totalPagadoVES <= 0) {
         console.log('  ⚠️ totalPagadoVES es 0, usando fallback');
         precioVentaVES = itemTotalVES;
+        precioVendidoUSD = itemTotalVES / TASA_CAMBIO;
         tipoTransaccion = "Debito (fallback)";
       } else {
         const proporcionUSD = usdEnVES / totalPagadoVES;
@@ -854,12 +919,18 @@ else if (item.isRecharge) {
         precioVentaVES = itemTotalVES * proporcionVESDebito;
         precioVentaVESEfectivo = itemTotalVES * proporcionVESEfectivo;
         
+        // precioVendidoUSD es el total real en USD (suma de todo)
+        precioVendidoUSD = (itemTotalVES * (usdEnVES / totalPagadoVES)) / TASA_CAMBIO + 
+                           (itemTotalVES * (vesAmount / totalPagadoVES)) / TASA_CAMBIO + 
+                           (itemTotalVES * (vesEfectivoAmount / totalPagadoVES)) / TASA_CAMBIO;
+        
         tipoTransaccion = "Mixto";
         
         console.log('  → Distribución:', {
           precioVentaUSD,
           precioVentaVES,
-          precioVentaVESEfectivo
+          precioVentaVESEfectivo,
+          precioVendidoUSD
         });
       }
       break;
@@ -867,6 +938,7 @@ else if (item.isRecharge) {
     default:
       console.log('  ⚠️ Método no reconocido:', paymentMethod);
       precioVentaVES = itemTotalVES;
+      precioVendidoUSD = itemTotalVES / TASA_CAMBIO;
       tipoTransaccion = "Debito (default)";
       break;
   }
@@ -875,19 +947,26 @@ else if (item.isRecharge) {
     productoID: item.id,
     tipoMovimiento: "salida",
     cantidad: item.quantity,
-    precioCompraUSD: item.precioCompraUSD || 0,
+    
+    // NUEVO CAMPO: precioVendido (precio real de venta en USD)
+    precioCompraUSD: precioCompraUSD,        // Costo del producto en USD
+    precioVendido: precioVendidoUSD,         // Precio real de venta en USD
+    
+    // Mantener los campos existentes
     precioVentaUSD: precioVentaUSD,
     precioCompraVES: item.precioCompraVES || 0,
     precioVentaVES: precioVentaVES,
     precioVentaVESEfectivo: precioVentaVESEfectivo,
+    
     empresaID: empresaId,
     tipoTransaccion: tipoTransaccion,
     pagoMovil: pagoMovil,
-    observaciones: `Venta realizada por ${userData?.nombre || "usuario"}`,
+    observaciones: `Venta: ${item.nombre} x${item.quantity}. Costo USD: $${precioCompraUSD.toFixed(2)} | Venta USD: $${precioVendidoUSD.toFixed(2)} | Ganancia USD: $${(precioVendidoUSD - precioCompraUSD).toFixed(2)}`,
     usuarioCedula: userData?.cedula
   };
   
-  console.log('📝 INSERTANDO MOVIMIENTO:', movementData);
+  console.log('📝 INSERTANDO MOVIMIENTO DE PRODUCTO:', movementData);
+  console.log('💵 GANANCIA EN USD:', precioVendidoUSD - precioCompraUSD);
 
   const { error: movementError } = await supa
     .from("productMovement")
@@ -897,6 +976,7 @@ else if (item.isRecharge) {
     console.error('❌ Error insertando movimiento:', movementError);
     throw movementError;
   }
+
 }
     }
 

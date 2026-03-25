@@ -152,10 +152,13 @@ const MainMenu = () => {
     verificarAcceso();
   }, []);
 
+  
+
   // Obtener datos del usuario
   useEffect(() => {
     const fetchUserData = async () => {
       try {
+        
         const session = await AsyncStorage.getItem("userSession");
         if (session) {
           const userData = JSON.parse(session);

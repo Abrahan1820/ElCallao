@@ -28,6 +28,7 @@ const StatisticsScreen = () => {
   const [movements, setMovements] = useState([]);
   const [products, setProducts] = useState({});
   const [productsList, setProductsList] = useState([]);
+  const [productPrices, setProductPrices] = useState({}); // Nuevo: precios de venta de productos
   const [loading, setLoading] = useState(true);
   const [userData, setUserData] = useState(null);
   const [empresaId, setEmpresaId] = useState(null);
@@ -41,14 +42,20 @@ const StatisticsScreen = () => {
     ingresosUSD: 0,
     ingresosVESDebito: 0,
     ingresosVESEfectivo: 0,
+    gananciaUSD: 0,
+    gananciaVES: 0,
   });
   
   // Datos para los gráficos
   const [chartDataUSD, setChartDataUSD] = useState(null);
   const [chartDataVES, setChartDataVES] = useState(null);
+  const [chartDataGanancia, setChartDataGanancia] = useState(null);
   
   // Top 30 productos más vendidos
   const [topProducts, setTopProducts] = useState([]);
+  
+  // Bottom 30 productos menos vendidos
+  const [bottomProducts, setBottomProducts] = useState([]);
 
   // -----------------------------
   // Funciones de fecha
@@ -103,27 +110,34 @@ const StatisticsScreen = () => {
   };
 
   // -----------------------------
-  // 📥 Cargar productos
+  // 📥 Cargar productos y sus precios
   // -----------------------------
   const loadProducts = async (empId) => {
     try {
       const { data, error } = await supa
         .from("product")
-        .select("id, nombre")
+        .select("id, nombre, precioVentaUSD, precioVentaVES") // Incluimos los precios de venta
         .eq("empresaID", empId);
 
       if (error) throw error;
 
       const productMap = {};
       const productList = [];
+      const priceMap = {};
       
       data.forEach((product) => {
         productMap[product.id] = product.nombre;
         productList.push({ id: product.id, nombre: product.nombre });
+        // Guardamos los precios de venta del producto
+        priceMap[product.id] = {
+          precioVentaUSD: product.precioVentaUSD || 0,
+          precioVentaVES: product.precioVentaVES || 0
+        };
       });
       
       setProducts(productMap);
       setProductsList(productList);
+      setProductPrices(priceMap);
     } catch (error) {
       console.error("Error cargando productos:", error);
     }
@@ -148,130 +162,234 @@ const StatisticsScreen = () => {
     }
   };
 
-  // -----------------------------
-  // 📊 Procesar estadísticas
-  // -----------------------------
-  const processStatistics = useCallback(() => {
-    const fechaInicio = getFechaInicio(selectedPeriodo);
-    
-    // Filtrar movimientos del período
-    const movimientosPeriodo = fechaInicio 
-      ? movements.filter(m => new Date(m.fecha) >= fechaInicio)
-      : movements;
-    
-    // Calcular totales
-    let totalVentas = 0;
-    let ingresosUSD = 0;
-    let ingresosVESDebito = 0;
-    let ingresosVESEfectivo = 0;
-    
-    // Calcular ventas por producto
-    const ventasPorProducto = {};
-    
-    movimientosPeriodo.forEach(m => {
-      if (m.tipoMovimiento === 'salida') {
-        totalVentas++;
-        ingresosUSD += m.precioVentaUSD || 0;
-        ingresosVESDebito += m.precioVentaVES || 0;
-        ingresosVESEfectivo += m.precioVentaVESEfectivo || 0;
-        
-        // Acumular ventas por producto
-        const prodId = m.productoID;
-        if (!ventasPorProducto[prodId]) {
-          ventasPorProducto[prodId] = {
-            cantidad: 0,
-            nombre: products[prodId] || "Producto desconocido"
-          };
-        }
-        ventasPorProducto[prodId].cantidad += m.cantidad;
-      }
-    });
-    
-    setStats({
-      totalVentas,
-      ingresosUSD,
-      ingresosVESDebito,
-      ingresosVESEfectivo,
-    });
-    
-    // Top 30 productos más vendidos
-    const top = Object.entries(ventasPorProducto)
-      .map(([id, data]) => ({
-        id,
-        nombre: data.nombre,
-        cantidad: data.cantidad,
-      }))
-      .sort((a, b) => b.cantidad - a.cantidad)
-      .slice(0, 30);
-    
-    setTopProducts(top);
-    
-    // Procesar datos para gráficos
-    processChartData(movimientosPeriodo);
-    
-  }, [movements, selectedPeriodo, products]);
-
-  // -----------------------------
-  // 📊 Procesar datos para gráficos
-  // -----------------------------
-  const processChartData = (movementsData) => {
-    const salidas = movementsData.filter(m => m.tipoMovimiento === 'salida');
-    
-    if (salidas.length === 0) {
-      setChartDataUSD(null);
-      setChartDataVES(null);
-      return;
-    }
-
-    const groupedByDate = {};
-    
-    salidas.forEach(m => {
-      const date = new Date(m.fecha);
-      const dateKey = `${date.getDate()}/${date.getMonth() + 1}`;
+// 📊 Procesar estadísticas
+const processStatistics = useCallback(() => {
+  const fechaInicio = getFechaInicio(selectedPeriodo);
+  
+  // Filtrar movimientos del período
+  const movimientosPeriodo = fechaInicio 
+    ? movements.filter(m => new Date(m.fecha) >= fechaInicio)
+    : movements;
+  
+  // Calcular totales
+  let totalVentas = 0;
+  let ingresosUSD = 0;
+  let ingresosVESDebito = 0;
+  let ingresosVESEfectivo = 0;
+  let gananciaTotalUSD = 0;
+  let gananciaTotalVES = 0;
+  let ultimaTasa = 60; // Valor por defecto
+  
+  // Obtener la última tasa del período para conversiones
+  const movimientosConTasa = movimientosPeriodo.filter(m => m.tasaBCV && m.tasaBCV > 0);
+  if (movimientosConTasa.length > 0) {
+    ultimaTasa = movimientosConTasa[movimientosConTasa.length - 1].tasaBCV;
+  }
+  
+  // Calcular ventas por producto
+  const ventasPorProducto = {};
+  
+  movimientosPeriodo.forEach(m => {
+    // Solo procesamos movimientos de salida
+    if (m.tipoMovimiento === 'salida') {
+      totalVentas++;
       
-      if (!groupedByDate[dateKey]) {
-        groupedByDate[dateKey] = { usd: 0, ves: 0 };
+      // Sumar ingresos según el tipo de pago
+      ingresosUSD += m.precioVentaUSD || 0;
+      ingresosVESDebito += m.precioVentaVES || 0;
+      ingresosVESEfectivo += m.precioVentaVESEfectivo || 0;
+      
+      // OBTENER GANANCIA REAL usando precioCompraUSD y precioVendido
+      // Para productos normales, recargas y avances, tenemos precioCompraUSD y precioVendido
+      let gananciaPorVentaUSD = 0;
+      
+      if (m.precioVendido && m.precioCompraUSD !== undefined) {
+        // Usar los nuevos campos si están disponibles
+        gananciaPorVentaUSD = (m.precioVendido - (m.precioCompraUSD || 0)) * (m.cantidad || 1);
+        console.log(`💰 ${products[m.productoID] || 'Producto'} - Vendido: $${m.precioVendido} | Costo: $${m.precioCompraUSD} | Ganancia: $${gananciaPorVentaUSD}`);
+      } else {
+        // Fallback: usar precioVentaReal del producto
+        const precioVentaRealUSD = productPrices[m.productoID]?.precioVentaUSD || 0;
+        gananciaPorVentaUSD = (precioVentaRealUSD - (m.precioCompraUSD || 0)) * (m.cantidad || 1);
       }
       
-      groupedByDate[dateKey].usd += m.precioVentaUSD || 0;
-      groupedByDate[dateKey].ves += (m.precioVentaVES || 0) + (m.precioVentaVESEfectivo || 0);
-    });
-
-    const dates = Object.keys(groupedByDate).sort((a, b) => {
-      const [dayA, monthA] = a.split('/');
-      const [dayB, monthB] = b.split('/');
-      return new Date(2024, monthA - 1, dayA) - new Date(2024, monthB - 1, dayB);
-    });
-
-    const usdData = dates.map(date => groupedByDate[date].usd);
-    const vesData = dates.map(date => groupedByDate[date].ves);
-
-    const lastDates = dates.slice(-10);
-    const lastUSD = usdData.slice(-10);
-    const lastVES = vesData.slice(-10);
-
-    if (lastUSD.some(v => v > 0)) {
-      setChartDataUSD({
-        labels: lastDates,
-        datasets: [{
-          data: lastUSD,
-          color: (opacity = 1) => `rgba(5, 150, 105, ${opacity})`,
-          strokeWidth: 2,
-        }],
-      });
+      gananciaTotalUSD += gananciaPorVentaUSD;
+      
+      // Calcular ganancia en VES usando la tasa del movimiento o la última tasa
+      const tasa = m.tasaBCV || ultimaTasa;
+      if (tasa > 0) {
+        gananciaTotalVES += gananciaPorVentaUSD * tasa;
+      }
+      
+      // Acumular ventas por producto
+      const prodId = m.productoID;
+      if (!ventasPorProducto[prodId]) {
+        ventasPorProducto[prodId] = {
+          cantidad: 0,
+          nombre: products[prodId] || "Producto desconocido",
+          ingresos: 0,
+          ganancia: 0,
+          costoTotal: 0,
+          ventaTotal: 0
+        };
+      }
+      
+      const cantidad = m.cantidad || 1;
+      const ventaTotal = m.precioVendido || (m.precioVentaUSD || 0);
+      const costoTotal = (m.precioCompraUSD || 0) * cantidad;
+      
+      ventasPorProducto[prodId].cantidad += cantidad;
+      ventasPorProducto[prodId].ingresos += ventaTotal;
+      ventasPorProducto[prodId].ganancia += gananciaPorVentaUSD;
+      ventasPorProducto[prodId].costoTotal += costoTotal;
+      ventasPorProducto[prodId].ventaTotal += ventaTotal;
     }
+  });
+  
+  setStats({
+    totalVentas,
+    ingresosUSD,
+    ingresosVESDebito,
+    ingresosVESEfectivo,
+    gananciaUSD: gananciaTotalUSD,
+    gananciaVES: gananciaTotalVES,
+  });
+  
+  // Top 30 productos más vendidos (orden descendente por cantidad)
+  const top = Object.entries(ventasPorProducto)
+    .map(([id, data]) => ({
+      id,
+      nombre: data.nombre,
+      cantidad: data.cantidad,
+      ingresos: data.ingresos,
+      ganancia: data.ganancia,
+      costoTotal: data.costoTotal,
+      ventaTotal: data.ventaTotal,
+    }))
+    .sort((a, b) => b.cantidad - a.cantidad)
+    .slice(0, 30);
+  
+  setTopProducts(top);
+  
+  // Bottom 30 productos menos vendidos
+  const productosConVentas = Object.entries(ventasPorProducto)
+    .map(([id, data]) => ({
+      id,
+      nombre: data.nombre,
+      cantidad: data.cantidad,
+      ingresos: data.ingresos,
+      ganancia: data.ganancia,
+      costoTotal: data.costoTotal,
+      ventaTotal: data.ventaTotal,
+    }))
+    .filter(p => p.cantidad > 0);
+  
+  // Orden ascendente (menos vendidos primero) y tomar los primeros 30
+  const bottom = [...productosConVentas]
+    .sort((a, b) => a.cantidad - b.cantidad)
+    .slice(0, 30);
+  
+  setBottomProducts(bottom);
+  
+  // Procesar datos para gráficos
+  processChartData(movimientosPeriodo, ultimaTasa);
+  
+}, [movements, selectedPeriodo, products, productPrices]);
 
-    if (lastVES.some(v => v > 0)) {
-      setChartDataVES({
-        labels: lastDates,
-        datasets: [{
-          data: lastVES,
-          color: (opacity = 1) => `rgba(69, 192, 232, ${opacity})`,
-          strokeWidth: 2,
-        }],
-      });
+// 📊 Procesar datos para gráficos
+const processChartData = (movementsData, tasaReferencia) => {
+  const salidas = movementsData.filter(m => m.tipoMovimiento === 'salida');
+  
+  if (salidas.length === 0) {
+    setChartDataUSD(null);
+    setChartDataVES(null);
+    setChartDataGanancia(null);
+    return;
+  }
+
+  const groupedByDate = {};
+  
+  salidas.forEach(m => {
+    const date = new Date(m.fecha);
+    const dateKey = `${date.getDate()}/${date.getMonth() + 1}`;
+    
+    if (!groupedByDate[dateKey]) {
+      groupedByDate[dateKey] = { 
+        usd: 0, 
+        ves: 0,
+        ganancia: 0,
+        cantidadVentas: 0
+      };
     }
-  };
+    
+    // Sumar ingresos según tipo
+    groupedByDate[dateKey].usd += m.precioVentaUSD || 0;
+    groupedByDate[dateKey].ves += (m.precioVentaVES || 0) + (m.precioVentaVESEfectivo || 0);
+    groupedByDate[dateKey].cantidadVentas += m.cantidad || 1;
+    
+    // Calcular ganancia usando precioCompraUSD y precioVendido
+    let gananciaPorVenta = 0;
+    
+    if (m.precioVendido && m.precioCompraUSD !== undefined) {
+      // Usar los nuevos campos
+      gananciaPorVenta = (m.precioVendido - (m.precioCompraUSD || 0)) * (m.cantidad || 1);
+    } else {
+      // Fallback: usar precio de venta real del producto
+      const precioVentaRealUSD = productPrices[m.productoID]?.precioVentaUSD || 0;
+      gananciaPorVenta = (precioVentaRealUSD - (m.precioCompraUSD || 0)) * (m.cantidad || 1);
+    }
+    
+    groupedByDate[dateKey].ganancia += gananciaPorVenta;
+  });
+
+  const dates = Object.keys(groupedByDate).sort((a, b) => {
+    const [dayA, monthA] = a.split('/');
+    const [dayB, monthB] = b.split('/');
+    return new Date(2024, monthA - 1, dayA) - new Date(2024, monthB - 1, dayB);
+  });
+
+  const usdData = dates.map(date => groupedByDate[date].usd);
+  const vesData = dates.map(date => groupedByDate[date].ves);
+  const gananciaData = dates.map(date => groupedByDate[date].ganancia);
+
+  const lastDates = dates.slice(-10);
+  const lastUSD = usdData.slice(-10);
+  const lastVES = vesData.slice(-10);
+  const lastGanancia = gananciaData.slice(-10);
+
+  if (lastUSD.some(v => v > 0)) {
+    setChartDataUSD({
+      labels: lastDates,
+      datasets: [{
+        data: lastUSD,
+        color: (opacity = 1) => `rgba(5, 150, 105, ${opacity})`,
+        strokeWidth: 2,
+      }],
+    });
+  }
+
+  if (lastVES.some(v => v > 0)) {
+    setChartDataVES({
+      labels: lastDates,
+      datasets: [{
+        data: lastVES,
+        color: (opacity = 1) => `rgba(69, 192, 232, ${opacity})`,
+        strokeWidth: 2,
+      }],
+    });
+  }
+
+  if (lastGanancia.some(v => v > 0)) {
+    setChartDataGanancia({
+      labels: lastDates,
+      datasets: [{
+        data: lastGanancia,
+        color: (opacity = 1) => `rgba(240, 178, 50, ${opacity})`,
+        strokeWidth: 2,
+      }],
+    });
+  }
+};
 
   // -----------------------------
   // 🔄 Cargar datos
@@ -305,10 +423,10 @@ const StatisticsScreen = () => {
   }, []);
 
   useEffect(() => {
-    if (movements.length > 0 && Object.keys(products).length > 0) {
+    if (movements.length > 0 && Object.keys(products).length > 0 && Object.keys(productPrices).length > 0) {
       processStatistics();
     }
-  }, [movements, selectedPeriodo, products]);
+  }, [movements, selectedPeriodo, products, productPrices]);
 
   const formatCurrency = (amount, currency) => {
     if (currency === 'USD') {
@@ -413,6 +531,13 @@ const StatisticsScreen = () => {
               icon="cash"
               color="#f39c12"
             />
+            <StatCard
+              title="Ganancia USD"
+              value={formatCurrency(stats.gananciaUSD, 'USD')}
+              icon="chart-line"
+              color="#f0b232"
+            />
+            
           </View>
 
           {/* Gráfico USD */}
@@ -471,48 +596,126 @@ const StatisticsScreen = () => {
             </View>
           )}
 
-          {/* Top 30 productos más vendidos */}
-          <View style={styles.topProductsContainer}>
-            <Text style={styles.sectionTitle}>🏆 Top 30 productos más vendidos</Text>
-            
-            {topProducts.length > 0 ? (
-              topProducts.map((product, index) => (
-                <View key={product.id} style={styles.productRankItem}>
-                  <View style={styles.rankContainer}>
-                    <Text style={[
-                      styles.rankText,
-                      index === 0 && styles.rankGold,
-                      index === 1 && styles.rankSilver,
-                      index === 2 && styles.rankBronze,
-                    ]}>
-                      #{index + 1}
-                    </Text>
-                  </View>
-                  <View style={styles.productRankInfo}>
-                    <Text style={styles.productRankName} numberOfLines={1}>
-                      {product.nombre}
-                    </Text>
-                    <Text style={styles.productRankQuantity}>
-                      {product.cantidad} unidades vendidas
-                    </Text>
-                  </View>
-                  <View style={styles.productRankBar}>
-                    <View 
-                      style={[
-                        styles.productRankBarFill,
-                        { width: `${Math.min((product.cantidad / topProducts[0]?.cantidad) * 100, 100)}%` }
-                      ]} 
-                    />
-                  </View>
-                </View>
-              ))
-            ) : (
-              <View style={styles.emptyContainer}>
-                <MaterialCommunityIcons name="chart-bar" size={50} color="#cbd5e1" />
-                <Text style={styles.emptyText}>No hay datos de ventas en este período</Text>
+          {/* Gráfico de Ganancia */}
+          {chartDataGanancia && (
+            <View style={styles.chartCard}>
+              <View style={styles.chartHeader}>
+                <MaterialCommunityIcons name="chart-line" size={20} color="#f0b232" />
+                <Text style={styles.chartTitle}>Evolución de ganancia en USD</Text>
               </View>
-            )}
-          </View>
+              <LineChart
+                data={chartDataGanancia}
+                width={width - 64}
+                height={200}
+                chartConfig={{
+                  backgroundColor: '#ffffff',
+                  backgroundGradientFrom: '#ffffff',
+                  backgroundGradientTo: '#ffffff',
+                  decimalPlaces: 2,
+                  color: (opacity = 1) => `rgba(240, 178, 50, ${opacity})`,
+                  labelColor: (opacity = 1) => `rgba(100, 116, 139, ${opacity})`,
+                  style: { borderRadius: 16 },
+                  propsForDots: { r: '4', strokeWidth: '2', stroke: '#f0b232' },
+                  formatYLabel: (value) => `$${parseFloat(value).toFixed(0)}`,
+                }}
+                bezier
+                style={styles.chart}
+              />
+            </View>
+          )}
+
+          {/* Top 30 productos más vendidos */}
+<View style={styles.topProductsContainer}>
+  <Text style={styles.sectionTitle}>🏆 Top 30 productos más vendidos</Text>
+  
+  {topProducts.length > 0 ? (
+    topProducts.map((product, index) => (
+      <View key={product.id} style={styles.productRankItem}>
+        <View style={styles.rankContainer}>
+          <Text style={[
+            styles.rankText,
+            index === 0 && styles.rankGold,
+            index === 1 && styles.rankSilver,
+            index === 2 && styles.rankBronze,
+          ]}>
+            #{index + 1}
+          </Text>
+        </View>
+        <View style={styles.productRankInfo}>
+          <Text style={styles.productRankName} numberOfLines={1}>
+            {product.nombre}
+          </Text>
+          <Text style={styles.productRankQuantity}>
+            {product.cantidad} und
+          </Text>
+        </View>
+        <View style={styles.productRankDetails}>
+          <Text style={styles.productRankRevenue}>
+            💰 {formatCurrency(product.ganancia, 'USD')}
+          </Text>
+          
+        </View>
+        <View style={styles.productRankBar}>
+          <View 
+            style={[
+              styles.productRankBarFill,
+              { width: `${Math.min((product.cantidad / topProducts[0]?.cantidad) * 100, 100)}%` }
+            ]} 
+          />
+        </View>
+      </View>
+    ))
+  ) : (
+    <View style={styles.emptyContainer}>
+      <MaterialCommunityIcons name="chart-bar" size={50} color="#cbd5e1" />
+      <Text style={styles.emptyText}>No hay datos de ventas en este período</Text>
+    </View>
+  )}
+</View>
+
+          {/* Bottom 30 productos menos vendidos */}
+<View style={styles.bottomProductsContainer}>
+  <Text style={styles.sectionTitle}>📉 Top 30 productos menos vendidos</Text>
+  
+  {bottomProducts.length > 0 ? (
+    bottomProducts.map((product, index) => (
+      <View key={product.id} style={styles.productRankItem}>
+        <View style={styles.rankContainer}>
+          <Text style={styles.rankBottomText}>
+            #{index + 1}
+          </Text>
+        </View>
+        <View style={styles.productRankInfo}>
+          <Text style={styles.productRankName} numberOfLines={1}>
+            {product.nombre}
+          </Text>
+          <Text style={styles.productRankBottomQuantity}>
+            {product.cantidad} und
+          </Text>
+        </View>
+        <View style={styles.productRankDetails}>
+          <Text style={styles.productRankRevenue}>
+            💰 {formatCurrency(product.ganancia, 'USD')}
+          </Text>
+          
+        </View>
+        <View style={styles.productRankBar}>
+          <View 
+            style={[
+              styles.productRankBarFillBottom,
+              { width: `${Math.min((product.cantidad / (bottomProducts[0]?.cantidad || 1)) * 100, 100)}%` }
+            ]} 
+          />
+        </View>
+      </View>
+    ))
+  ) : (
+    <View style={styles.emptyContainer}>
+      <MaterialCommunityIcons name="chart-bar" size={50} color="#cbd5e1" />
+      <Text style={styles.emptyText}>No hay suficientes datos en este período</Text>
+    </View>
+  )}
+</View>
 
           <View style={styles.bottomSpace} />
         </ScrollView>
@@ -665,6 +868,20 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 2,
   },
+  bottomProductsContainer: {
+    backgroundColor: 'white',
+    marginHorizontal: 16,
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
+    borderLeftWidth: 4,
+    borderLeftColor: '#e74c3c',
+  },
   sectionTitle: {
     fontSize: 16,
     fontWeight: '600',
@@ -691,6 +908,11 @@ const styles = StyleSheet.create({
   rankBronze: {
     color: '#cd7f32',
   },
+  rankBottomText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#e74c3c',
+  },
   productRankInfo: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -708,6 +930,11 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#45c0e8',
   },
+  productRankBottomQuantity: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#e74c3c',
+  },
   productRankBar: {
     height: 6,
     backgroundColor: '#e2e8f0',
@@ -717,6 +944,11 @@ const styles = StyleSheet.create({
   productRankBarFill: {
     height: '100%',
     backgroundColor: '#45c0e8',
+    borderRadius: 3,
+  },
+  productRankBarFillBottom: {
+    height: '100%',
+    backgroundColor: '#e74c3c',
     borderRadius: 3,
   },
   emptyContainer: {
@@ -732,6 +964,37 @@ const styles = StyleSheet.create({
   bottomSpace: {
     height: 20,
   },
+  productRankDetails: {
+  flexDirection: 'row',
+  justifyContent: 'space-between',
+  alignItems: 'center',
+  marginBottom: 4,
+  gap: 8,
+},
+productRankRevenue: {
+  fontSize: 12,
+  fontWeight: '600',
+  color: '#27ae60',
+},
+productRankMargin: {
+  fontSize: 11,
+  fontWeight: '500',
+  paddingHorizontal: 6,
+  paddingVertical: 2,
+  borderRadius: 10,
+},
+marginHigh: {
+  backgroundColor: '#d4edda',
+  color: '#155724',
+},
+marginMedium: {
+  backgroundColor: '#fff3cd',
+  color: '#856404',
+},
+marginLow: {
+  backgroundColor: '#f8d7da',
+  color: '#721c24',
+},
 });
 
 export default StatisticsScreen;

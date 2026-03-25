@@ -16,6 +16,7 @@ import NavBar from "../../NavBar/Components/NavBar";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { LineChart } from "react-native-chart-kit";
+import Toast from 'react-native-toast-message';
 
 const { width } = Dimensions.get('window');
 
@@ -60,6 +61,76 @@ const ProductDetailScreen = ({ route, navigation }) => {
       setLoading(false);
     }
   };
+
+  // Función para desactivar producto
+const deactivateProduct = async () => {
+  try {
+    const { error } = await supa
+      .from("product")
+      .update({ esActivo: false })
+      .eq("id", productId);
+
+    if (error) throw error;
+
+    // Mostrar toast de éxito
+    Toast.show({
+      type: 'success',
+      text1: 'Producto desactivado',
+      text2: `${product?.nombre} ha sido desactivado correctamente`,
+      visibilityTime: 3000,
+    });
+
+    // Actualizar el estado local
+    setProduct({ ...product, esActivo: false });
+    
+    // Opcional: regresar a la pantalla anterior después de 1.5 segundos
+    setTimeout(() => {
+      navigation.goBack();
+    }, 1500);
+    
+  } catch (error) {
+    console.error("Error desactivando producto:", error);
+    
+    // Mostrar toast de error
+    Toast.show({
+      type: 'error',
+      text1: 'Error',
+      text2: 'No se pudo desactivar el producto. Intenta de nuevo.',
+      visibilityTime: 3000,
+    });
+  }
+};
+
+// Función para mostrar confirmación antes de desactivar
+const showDeactivateConfirmation = () => {
+  // Usando tu customConfirm de Toast modificado
+  Toast.show({
+    type: 'customConfirm',
+    text1: 'Desactivar producto',
+    text2: `¿Estás seguro que deseas desactivar "${product?.nombre}"?\n\nEste producto dejará de estar disponible en el inventario.`,
+    visibilityTime: 0, // No se cierra automáticamente
+    autoHide: false, // No se oculta automáticamente
+    props: {
+      buttons: [
+        {
+          text: 'Cancelar',
+          onPress: () => Toast.hide(),
+          style: { color: '#64748b' }
+        },
+        {
+          text: 'Desactivar',
+          onPress: () => {
+            Toast.hide();
+            deactivateProduct();
+          },
+          style: { color: '#e74c3c', fontWeight: 'bold' }
+        }
+      ]
+    }
+  });
+};
+
+
 
   const loadProductMovements = async () => {
     setLoadingMovements(true);
@@ -426,7 +497,9 @@ const ProductDetailScreen = ({ route, navigation }) => {
             )}
           </View>
 
-          {/* Botones de acción */}
+         
+
+{/* Botones de acción */}
 <View style={styles.actionButtons}>
   <TouchableOpacity 
     style={[styles.actionButton, styles.adjustButton]}
@@ -443,6 +516,17 @@ const ProductDetailScreen = ({ route, navigation }) => {
     <MaterialCommunityIcons name="pencil" size={20} color="white" />
     <Text style={styles.actionButtonText}>Editar</Text>
   </TouchableOpacity>
+  
+  {/* 👇 Nuevo botón de desactivar - solo mostrar si el producto está activo */}
+  {product?.esActivo !== false && (
+    <TouchableOpacity 
+      style={[styles.actionButton, styles.deactivateButton]}
+      onPress={showDeactivateConfirmation}
+    >
+      <MaterialCommunityIcons name="close-circle" size={20} color="white" />
+      <Text style={styles.actionButtonText}>Desactivar</Text>
+    </TouchableOpacity>
+  )}
 </View>
 
         </ScrollView>
@@ -452,6 +536,9 @@ const ProductDetailScreen = ({ route, navigation }) => {
 };
 
 const styles = StyleSheet.create({
+  deactivateButton: {
+  backgroundColor: '#e74c3c',
+},
   safeArea: {
     flex: 1,
     backgroundColor: '#45c0e8',
