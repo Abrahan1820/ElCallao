@@ -205,7 +205,7 @@ const processStatistics = useCallback(() => {
       
       if (m.precioVendido && m.precioCompraUSD !== undefined) {
         // Usar los nuevos campos si están disponibles
-        gananciaPorVentaUSD = (m.precioVendido - (m.precioCompraUSD || 0)) * (m.cantidad || 1);
+        gananciaPorVentaUSD = (((m.precioVendido))- ((m.precioCompraUSD) * (m.cantidad)));
         console.log(`💰 ${products[m.productoID] || 'Producto'} - Vendido: $${m.precioVendido} | Costo: $${m.precioCompraUSD} | Ganancia: $${gananciaPorVentaUSD}`);
       } else {
         // Fallback: usar precioVentaReal del producto

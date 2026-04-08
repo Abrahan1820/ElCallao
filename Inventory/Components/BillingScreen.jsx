@@ -249,9 +249,50 @@ const BillingScreen = () => {
   // -----------------------------
   // 🔄 Cargar al iniciar
   // -----------------------------
-  useEffect(() => {
-    loadAllData();
-  }, []);
+
+
+  const actualizarTasaBCV = async () => {
+  try {
+    const response = await fetch(
+      "https://ve.dolarapi.com/v1/dolares/oficial"
+    );
+
+    const data = await response.json();
+
+    const tasa = data?.promedio;
+
+    if (!tasa) {
+      console.log("⚠️ No se pudo obtener la tasa BCV");
+      return;
+    }
+
+    console.log("📊 Nueva tasa BCV:", tasa);
+
+    const { error } = await supa
+      .from("tasaBCV")
+      .update({
+        precioVESUSD: tasa,
+        fecha: new Date().toISOString(),
+      })
+      .eq("id", 1);
+
+    if (error) {
+      console.log("❌ Error actualizando tasa:", error);
+    }
+  } catch (err) {
+    console.log("❌ Error consultando API:", err);
+  }
+};
+
+useEffect(() => {
+  const init = async () => {
+    await actualizarTasaBCV();
+    await loadAllData();
+  };
+
+  init();
+}, []);
+  
 
   useFocusEffect(
     useCallback(() => {
