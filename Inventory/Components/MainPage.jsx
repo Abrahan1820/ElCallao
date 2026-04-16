@@ -314,6 +314,12 @@ const MainMenu = () => {
               pagina="Sign_up"
               onPress={handleEditProfile}
             />
+            <Tarjeta
+              imagen={require("../Assets/usuario.png")}
+              texto="Agenda"
+              pagina="AgendaScreen"
+              onPress={() => navigation.navigate("AgendaScreen")}
+            />
             {esAdministrador && (
               <Tarjeta
                 imagen={require("../Assets/editar.png")}

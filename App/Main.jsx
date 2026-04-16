@@ -30,7 +30,7 @@ import CreateProduct from "../Inventory/Components/CreateProduct";
 import AdjustStock from "../Inventory/Components/AdjustStock";
 import AdvanceCashModal from "../Inventory/Components/AdvanceCashModal";
 import RechargeModal from "../Inventory/Components/RechargeModal";
-
+import AgendaScreen from "../Inventory/Components/AgendaScreen";
 
 
 
@@ -206,6 +206,7 @@ const Main = () => {
       <Stack.Screen name="AdjustStock" component={AdjustStock} options={{ headerShown: false }}></Stack.Screen>
       <Stack.Screen name="AdvanceCashModal" component={AdvanceCashModal} options={{ headerShown: false }}></Stack.Screen>
       <Stack.Screen name="RechargeModal" component={RechargeModal} options={{ headerShown: false }}></Stack.Screen>
+      <Stack.Screen name="AgendaScreen" component={AgendaScreen} options={{ headerShown: false }}></Stack.Screen>
       
       </Stack.Navigator>
       <Toast config={toastConfig} />
