@@ -236,14 +236,34 @@ const BillingScreen = ({ navigation, route }) => {
     }
   }, [selectedCategoria]);
 
-  const handleFiadoConfirm = (cliente) => {
+  const handleFiadoConfirm = async (cliente) => {
+  console.log('🔍 handleFiadoConfirm - Limpiando carrito después de fiado:', cliente);
+  
+  try {
+    // Solo limpiar el carrito y los estados
+    // El FiadoModal ya se encargó de crear los registros en la base de datos
     setCart([]);
     setFiadoModalVisible(false);
     setPaymentMethod(null);
     setPagoMovilRef("");
     setMixedPayment({ usd: "", ves: "", vesEfectivo: "" });
-    loadAllData();
-  };
+    
+    // Recargar datos para actualizar stock
+    await loadAllData();
+    
+    console.log('✅ Carrito limpiado después de fiado');
+    
+  } catch (error) {
+    console.error('❌ Error en handleFiadoConfirm:', error);
+    Toast.show({
+      type: "error",
+      text1: "Error",
+      text2: `Error al limpiar carrito: ${error.message || 'Error desconocido'}`,
+      position: "top",
+      visibilityTime: 5000,
+    });
+  }
+};
 
   const actualizarTasaBCV = async () => {
     try {
@@ -427,8 +447,32 @@ const BillingScreen = ({ navigation, route }) => {
     setFilteredProducts(filtered);
   };
 
-  const addToCart = (product, quantity) => {
-    if (quantity > product.stockActual) {
+  // 🛒 Agregar producto normal al carrito
+const addToCart = (product, quantity) => {
+  if (quantity > product.stockActual) {
+    Toast.show({
+      type: "error",
+      text1: "Stock insuficiente",
+      text2: `Solo hay ${product.stockActual} unidades disponibles`,
+      position: "top",
+      visibilityTime: 3000,
+    });
+    return;
+  }
+
+  // Buscar si ya existe un item del mismo producto (no de agenda)
+  const existingItem = cart.find(item => {
+    // Si el item es de agenda, no lo combinamos con productos normales
+    if (item.isFromAgenda) return false;
+    // Si el item tiene originalId (productos normales agregados previamente)
+    if (item.originalId) return item.originalId === product.id;
+    // Si el item usa id directamente (caso legacy o productos normales)
+    return item.id === product.id;
+  });
+  
+  if (existingItem) {
+    const newQuantity = existingItem.quantity + quantity;
+    if (newQuantity > product.stockActual) {
       Toast.show({
         type: "error",
         text1: "Stock insuficiente",
@@ -438,40 +482,29 @@ const BillingScreen = ({ navigation, route }) => {
       });
       return;
     }
-
-    const existingItem = cart.find(item => item.originalId === product.id && !item.isFromAgenda);
     
-    if (existingItem) {
-      const newQuantity = existingItem.quantity + quantity;
-      if (newQuantity > product.stockActual) {
-        Toast.show({
-          type: "error",
-          text1: "Stock insuficiente",
-          text2: `Solo hay ${product.stockActual} unidades disponibles`,
-          position: "top",
-          visibilityTime: 3000,
-        });
-        return;
-      }
+    setCart(cart.map(item => {
+      // Determinar si este item es el que queremos actualizar
+      const isMatch = item.isFromAgenda ? false : 
+                      (item.originalId ? item.originalId === product.id : item.id === product.id);
       
-      setCart(cart.map(item => 
-        item.originalId === product.id && !item.isFromAgenda
-          ? { ...item, quantity: newQuantity }
-          : item
-      ));
-    } else {
-      const newItem = { 
-        ...product, 
-        quantity,
-        id: `product_${product.id}_${Date.now()}_${Math.random().toString(36).substring(7)}`,
-        originalId: product.id
-      };
-      setCart([...cart, newItem]);
-    }
-    
-    setQuantityModalVisible(false);
-    setTempQuantity("1");
-  };
+      return isMatch ? { ...item, quantity: newQuantity } : item;
+    }));
+  } else {
+    // Crear nuevo item con estructura consistente
+    const newItem = { 
+      ...product, 
+      quantity,
+      id: `product_${product.id}_${Date.now()}_${Math.random().toString(36).substring(7)}`,
+      originalId: product.id,
+      isFromAgenda: false // Asegurar que no sea de agenda
+    };
+    setCart([...cart, newItem]);
+  }
+  
+  setQuantityModalVisible(false);
+  setTempQuantity("1");
+};
 
   const addAdvanceCash = (monto) => {
     const montoConInteres = Math.ceil(monto * 1.2);

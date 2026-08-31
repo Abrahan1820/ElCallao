@@ -15,7 +15,7 @@ import { SupaClient } from '../../Supabase/supabase';
 import Toast from 'react-native-toast-message';
 
 const FiadoModal = ({ visible, onClose, onConfirm, cart, userData, empresaId }) => {
-  const [step, setStep] = useState('search'); // search, register, confirm, list
+  const [step, setStep] = useState('search');
   const [searchCedula, setSearchCedula] = useState('');
   const [searching, setSearching] = useState(false);
   const [foundClient, setFoundClient] = useState(null);
@@ -24,7 +24,6 @@ const FiadoModal = ({ visible, onClose, onConfirm, cart, userData, empresaId }) 
   const [loadingContacts, setLoadingContacts] = useState(false);
   const [searchContactText, setSearchContactText] = useState('');
   
-  // Para registrar nuevo cliente
   const [newClient, setNewClient] = useState({
     cedula: '',
     nombre: '',
@@ -33,21 +32,20 @@ const FiadoModal = ({ visible, onClose, onConfirm, cart, userData, empresaId }) 
   
   const supa = SupaClient();
 
-  // Cargar contactos cuando se abre el modal
   useEffect(() => {
     if (visible) {
       loadContacts();
     }
   }, [visible, step]);
 
-  // Filtrar contactos cuando cambia el texto de búsqueda
   useEffect(() => {
     if (searchContactText.trim() === '') {
       setFilteredContacts(contacts);
     } else {
       const searchLower = searchContactText.toLowerCase();
       const filtered = contacts.filter(contact => 
-        contact.nombre.toLowerCase().includes(searchLower)
+        contact.nombre.toLowerCase().includes(searchLower) ||
+        contact.cedula.toLowerCase().includes(searchLower)
       );
       setFilteredContacts(filtered);
     }
@@ -97,7 +95,7 @@ const FiadoModal = ({ visible, onClose, onConfirm, cart, userData, empresaId }) 
         .from('contact')
         .select('*')
         .eq('cedula', searchCedula)
-        .single();
+        .maybeSingle();
 
       if (error && error.code !== 'PGRST116') throw error;
 
@@ -105,7 +103,6 @@ const FiadoModal = ({ visible, onClose, onConfirm, cart, userData, empresaId }) 
         setFoundClient(data);
         setStep('confirm');
       } else {
-        // Cliente no encontrado, pasar a registro
         setNewClient({ ...newClient, cedula: searchCedula });
         setStep('register');
       }
@@ -153,12 +150,11 @@ const FiadoModal = ({ visible, onClose, onConfirm, cart, userData, empresaId }) 
 
     setSearching(true);
     try {
-      // Verificar si ya existe
       const { data: existing } = await supa
         .from('contact')
         .select('cedula')
         .eq('cedula', newClient.cedula)
-        .single();
+        .maybeSingle();
 
       if (existing) {
         Toast.show({
@@ -171,13 +167,13 @@ const FiadoModal = ({ visible, onClose, onConfirm, cart, userData, empresaId }) 
         return;
       }
 
-      // Insertar nuevo cliente
       const { data, error } = await supa
         .from('contact')
         .insert({
           cedula: newClient.cedula,
           nombre: newClient.nombre,
           telefono: newClient.telefono || null,
+         
         })
         .select()
         .single();
@@ -199,7 +195,7 @@ const FiadoModal = ({ visible, onClose, onConfirm, cart, userData, empresaId }) 
       Toast.show({
         type: 'error',
         text1: 'Error',
-        text2: 'No se pudo registrar el cliente',
+        text2: `No se pudo registrar el cliente: ${error.message}`,
         position: 'top',
         visibilityTime: 3000,
       });
@@ -209,66 +205,177 @@ const FiadoModal = ({ visible, onClose, onConfirm, cart, userData, empresaId }) 
   };
 
   const confirmarFiado = async () => {
-    setSearching(true);
-    try {
-      // Verificar que no haya avances o recargas
-      const hasSpecialItems = cart.some(item => item.isAdvance || item.isRecharge);
-      if (hasSpecialItems) {
-        Toast.show({
-          type: 'error',
-          text1: 'Error',
-          text2: 'No se pueden fiar avances de efectivo o recargas',
-          position: 'top',
-          visibilityTime: 3000,
-        });
-        setSearching(false);
-        return;
-      }
+  // Validar que haya productos
+  if (cart.length === 0) {
+    Toast.show({
+      type: 'error',
+      text1: 'Error',
+      text2: 'No hay productos en el carrito',
+      position: 'top',
+      visibilityTime: 3000,
+    });
+    return;
+  }
 
-      // Insertar cada producto en productMovementWaitList
-      for (const item of cart) {
-        const { error } = await supa
-          .from('productMovementWaitList')
-          .insert({
-            productoID: item.id,
-            cantidad: item.quantity,
-            cedulaCliente: foundClient.cedula,
-          });
+  // Validar que haya un cliente seleccionado
+  if (!foundClient) {
+    Toast.show({
+      type: 'error',
+      text1: 'Error',
+      text2: 'No hay un cliente seleccionado',
+      position: 'top',
+      visibilityTime: 3000,
+    });
+    return;
+  }
 
-        if (error) throw error;
+  // Validar que no haya avances o recargas
+  const hasSpecialItems = cart.some(item => item.isAdvance || item.isRecharge);
+  if (hasSpecialItems) {
+    Toast.show({
+      type: 'error',
+      text1: 'Error',
+      text2: 'No se pueden fiar avances de efectivo o recargas',
+      position: 'top',
+      visibilityTime: 3000,
+    });
+    return;
+  }
 
-        // Actualizar stock del producto
-        const { error: updateError } = await supa
-          .from('product')
-          .update({ stockActual: item.stockActual - item.quantity })
-          .eq('id', item.id);
+  setSearching(true);
+  
+  try {
+    let registrados = 0;
+    let errores = [];
 
-        if (updateError) throw updateError;
-      }
+    // Filtrar solo productos normales (no avances, no recargas, no de agenda)
+    const productosParaFiar = cart.filter(item => 
+      !item.isAdvance && 
+      !item.isRecharge && 
+      !item.isFromAgenda
+    );
 
-      Toast.show({
-        type: 'success',
-        text1: 'Éxito',
-        text2: `Venta fiada registrada para ${foundClient.nombre}`,
-        position: 'top',
-        visibilityTime: 4000,
-      });
-
-      onConfirm(foundClient);
-      resetModal();
-    } catch (error) {
-      console.error('Error registrando venta fiada:', error);
+    if (productosParaFiar.length === 0) {
       Toast.show({
         type: 'error',
         text1: 'Error',
-        text2: 'No se pudo registrar la venta fiada',
+        text2: 'No hay productos válidos para fiar en el carrito',
         position: 'top',
         visibilityTime: 3000,
       });
-    } finally {
       setSearching(false);
+      return;
     }
-  };
+
+    console.log('📝 Productos a fiar:', productosParaFiar.map(i => ({
+      nombre: i.nombre,
+      originalId: i.originalId,
+      id: i.id,
+      quantity: i.quantity,
+      stockActual: i.stockActual
+    })));
+
+    // 🔥 IMPORTANTE: Crear UN SOLO registro por producto, usando la cantidad total
+    for (const item of productosParaFiar) {
+      try {
+        const productId = item.originalId || item.id;
+        const cantidad = item.quantity; // Ya incluye la cantidad total
+        
+        console.log(`  → Insertando ${item.nombre} (ID: ${productId}) x${cantidad} unidades`);
+
+        // Insertar UN SOLO registro en productMovementWaitList
+        const { data, error } = await supa
+          .from('productMovementWaitList')
+          .insert({
+            productoID: productId,
+            cantidad: cantidad, // Usar la cantidad total
+            cedulaCliente: foundClient.cedula,
+            pagado: false,
+            created_at: new Date().toISOString()
+          })
+          .select();
+
+        if (error) {
+          console.error(`❌ Error insertando ${item.nombre}:`, error);
+          errores.push(`${item.nombre}: ${error.message}`);
+          continue;
+        }
+
+        console.log(`  ✅ Insertado ${item.nombre} x${cantidad}, ID: ${data?.[0]?.id}`);
+
+        // Actualizar stock del producto (descontar la cantidad total)
+        const { error: updateError } = await supa
+          .from('product')
+          .update({ stockActual: item.stockActual - cantidad })
+          .eq('id', productId);
+
+        if (updateError) {
+          console.error(`❌ Error actualizando stock de ${item.nombre}:`, updateError);
+          errores.push(`${item.nombre}: Error de stock`);
+          continue;
+        }
+
+        console.log(`  ✅ Stock actualizado para ${item.nombre} (${item.stockActual} - ${cantidad} = ${item.stockActual - cantidad})`);
+        registrados++;
+
+      } catch (itemError) {
+        console.error(`❌ Error procesando ${item.nombre}:`, itemError);
+        errores.push(`${item.nombre}: ${itemError.message}`);
+      }
+    }
+
+    console.log(`📊 Resumen: ${registrados} registrados, ${errores.length} errores`);
+
+    if (registrados === 0 && errores.length > 0) {
+      Toast.show({
+        type: 'error',
+        text1: 'Error',
+        text2: `fiado: ${errores[0]}`,
+        position: 'top',
+        visibilityTime: 5000,
+      });
+      setSearching(false);
+      return;
+    }
+
+    if (errores.length > 0) {
+      Toast.show({
+        type: 'warning',
+        text1: 'Parcialmente exitoso',
+        text2: `${registrados} producto(s) registrados, ${errores.length} fallaron`,
+        position: 'top',
+        visibilityTime: 5000,
+      });
+    } else {
+      Toast.show({
+        type: 'success',
+        text1: 'Éxito',
+        text2: `Venta fiada registrada para ${foundClient.nombre} (${registrados} producto${registrados > 1 ? 's' : ''})`,
+        position: 'top',
+        visibilityTime: 4000,
+      });
+    }
+
+    // Si al menos un producto se registró, llamar al onConfirm
+    if (registrados > 0) {
+      // 🔥 Pasar el cliente para que BillingScreen limpie el carrito
+      onConfirm(foundClient);
+      resetModal();
+    }
+
+  } catch (error) {
+    console.error('❌ Error general en confirmarFiado:', error);
+    Toast.show({
+      type: 'error',
+      text1: 'Error',
+      text2: `Error al registrar fiado: ${error.message || 'Error desconocido'}`,
+      position: 'top',
+      visibilityTime: 5000,
+    });
+  } finally {
+    setSearching(false);
+  }
+};
 
   const resetModal = () => {
     setStep('search');
@@ -304,9 +411,9 @@ const FiadoModal = ({ visible, onClose, onConfirm, cart, userData, empresaId }) 
     </TouchableOpacity>
   );
 
-  // Calcular total de la orden
+  // Calcular total de la orden (solo productos normales)
   const ordenTotal = cart.reduce((sum, item) => {
-    if (item.isAdvance || item.isRecharge) return sum;
+    if (item.isAdvance || item.isRecharge || item.isFromAgenda) return sum;
     return sum + (item.precioVentaVES * item.quantity);
   }, 0);
 
@@ -327,10 +434,8 @@ const FiadoModal = ({ visible, onClose, onConfirm, cart, userData, empresaId }) 
             </TouchableOpacity>
           </View>
 
-          {/* Pantalla de búsqueda/lista de contactos */}
           {step === 'search' && (
             <View style={styles.stepContainer}>
-              {/* Búsqueda por cédula */}
               <View style={styles.searchSection}>
                 <Text style={styles.sectionTitle}>Buscar por cédula</Text>
                 <View style={styles.inputContainer}>
@@ -360,18 +465,15 @@ const FiadoModal = ({ visible, onClose, onConfirm, cart, userData, empresaId }) 
                 </TouchableOpacity>
               </View>
 
-              {/* Separador */}
               <View style={styles.divider}>
                 <View style={styles.dividerLine} />
                 <Text style={styles.dividerText}>O</Text>
                 <View style={styles.dividerLine} />
               </View>
 
-              {/* Lista de contactos existentes */}
               <View style={styles.contactsSection}>
                 <Text style={styles.sectionTitle}>Seleccionar de la lista</Text>
                 
-                {/* Búsqueda en la lista */}
                 <View style={styles.inputContainer}>
                   <MaterialCommunityIcons name="account-search" size={20} color="#64748b" />
                   <TextInput
@@ -416,7 +518,6 @@ const FiadoModal = ({ visible, onClose, onConfirm, cart, userData, empresaId }) 
             </View>
           )}
 
-          {/* Pantalla de registro de nuevo cliente */}
           {step === 'register' && (
             <ScrollView style={styles.stepContainer}>
               <Text style={styles.stepTitle}>
@@ -485,96 +586,93 @@ const FiadoModal = ({ visible, onClose, onConfirm, cart, userData, empresaId }) 
             </ScrollView>
           )}
 
-          {/* Pantalla de confirmación */}
           {step === 'confirm' && (
-  <ScrollView 
-    style={styles.stepContainer}
-    showsVerticalScrollIndicator={true}
-    contentContainerStyle={{ paddingBottom: 20 }}
-  >
-    <MaterialCommunityIcons name="account-check" size={48} color="#27ae60" style={styles.confirmIcon} />
-    <Text style={styles.confirmTitle}>Cliente seleccionado</Text>
-    
-    <View style={styles.clientInfo}>
-      <Text style={styles.clientName}>{foundClient?.nombre}</Text>
-      <Text style={styles.clientDetail}>Cédula: {foundClient?.cedula}</Text>
-      {foundClient?.telefono && (
-        <Text style={styles.clientDetail}>Teléfono: {foundClient?.telefono}</Text>
-      )}
-    </View>
+            <ScrollView 
+              style={styles.stepContainer}
+              showsVerticalScrollIndicator={true}
+              contentContainerStyle={{ paddingBottom: 20 }}
+            >
+              <MaterialCommunityIcons name="account-check" size={48} color="#27ae60" style={styles.confirmIcon} />
+              <Text style={styles.confirmTitle}>Cliente seleccionado</Text>
+              
+              <View style={styles.clientInfo}>
+                <Text style={styles.clientName}>{foundClient?.nombre}</Text>
+                <Text style={styles.clientDetail}>Cédula: {foundClient?.cedula}</Text>
+                {foundClient?.telefono && (
+                  <Text style={styles.clientDetail}>Teléfono: {foundClient?.telefono}</Text>
+                )}
+              </View>
 
-    <View style={styles.orderSummary}>
-      <Text style={styles.summaryTitle}>Resumen de la orden:</Text>
-      <ScrollView 
-        style={{ maxHeight: 200 }}
-        showsVerticalScrollIndicator={true}
-      >
-        {cart.map((item, index) => {
-          if (item.isAdvance || item.isRecharge) return null;
-          return (
-            <View key={index} style={styles.orderItem}>
-              <Text style={styles.orderItemName}>
-                {item.nombre} x{item.quantity}
-              </Text>
-              <Text style={styles.orderItemPrice}>
-                Bs. {(item.precioVentaVES * item.quantity).toFixed(2)}
-              </Text>
-            </View>
-          );
-        })}
-      </ScrollView>
-      <View style={styles.orderTotal}>
-        <Text style={styles.orderTotalLabel}>Total a pagar:</Text>
-        <Text style={styles.orderTotalValue}>
-          Bs. {ordenTotal.toFixed(2)}
-        </Text>
-      </View>
-    </View>
+              <View style={styles.orderSummary}>
+                <Text style={styles.summaryTitle}>Resumen de la orden:</Text>
+                <ScrollView 
+                  style={{ maxHeight: 200 }}
+                  showsVerticalScrollIndicator={true}
+                >
+                  {cart.map((item, index) => {
+                    if (item.isAdvance || item.isRecharge || item.isFromAgenda) return null;
+                    return (
+                      <View key={index} style={styles.orderItem}>
+                        <Text style={styles.orderItemName}>
+                          {item.nombre} x{item.quantity}
+                        </Text>
+                        <Text style={styles.orderItemPrice}>
+                          Bs. {(item.precioVentaVES * item.quantity).toFixed(2)}
+                        </Text>
+                      </View>
+                    );
+                  })}
+                </ScrollView>
+                <View style={styles.orderTotal}>
+                  <Text style={styles.orderTotalLabel}>Total a pagar:</Text>
+                  <Text style={styles.orderTotalValue}>
+                    Bs. {ordenTotal.toFixed(2)}
+                  </Text>
+                </View>
+              </View>
 
-    <TouchableOpacity 
-      style={styles.confirmButton}
-      onPress={confirmarFiado}
-      disabled={searching}
-    >
-      {searching ? (
-        <ActivityIndicator size="small" color="white" />
-      ) : (
-        <>
-          <MaterialCommunityIcons name="check-circle" size={20} color="white" />
-          <Text style={styles.buttonText}>Confirmar Fiado</Text>
-        </>
-      )}
-    </TouchableOpacity>
+              <TouchableOpacity 
+                style={styles.confirmButton}
+                onPress={confirmarFiado}
+                disabled={searching}
+              >
+                {searching ? (
+                  <ActivityIndicator size="small" color="white" />
+                ) : (
+                  <>
+                    <MaterialCommunityIcons name="check-circle" size={20} color="white" />
+                    <Text style={styles.buttonText}>Confirmar Fiado</Text>
+                  </>
+                )}
+              </TouchableOpacity>
 
-    <TouchableOpacity 
-      style={styles.cancelButton}
-      onPress={() => setStep('search')}
-    >
-      <Text style={styles.cancelButtonText}>Volver a seleccionar cliente</Text>
-    </TouchableOpacity>
-  </ScrollView>
-)}
+              <TouchableOpacity 
+                style={styles.cancelButton}
+                onPress={() => setStep('search')}
+              >
+                <Text style={styles.cancelButtonText}>Volver a seleccionar cliente</Text>
+              </TouchableOpacity>
+            </ScrollView>
+          )}
         </View>
       </View>
     </Modal>
   );
 };
 
-
-
 const styles = StyleSheet.create({
   modalContainer: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'flex-start', // Cambiado de 'center' a 'flex-start'
+    justifyContent: 'flex-start',
     alignItems: 'center',
-    paddingTop: 40, // Agregar padding superior
+    paddingTop: 40,
   },
   modalContent: {
     backgroundColor: 'white',
     borderRadius: 20,
-    width: '95%', // Aumentado de 90% a 95%
-    height: '85%', // Aumentado de 85% a 90%
+    width: '95%',
+    height: '85%',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.25,
@@ -584,7 +682,7 @@ const styles = StyleSheet.create({
   modalHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 16, // Reducido de 20 a 16
+    padding: 16,
     borderBottomWidth: 1,
     borderBottomColor: '#e2e8f0',
   },
@@ -599,22 +697,22 @@ const styles = StyleSheet.create({
     padding: 4,
   },
   stepContainer: {
-    padding: 16, // Reducido de 20 a 16
+    padding: 16,
     maxHeight: '100%',
   },
   searchSection: {
-    marginBottom: 16, // Reducido de 20 a 16
+    marginBottom: 16,
   },
   contactsSection: {
     flex: 1,
-    minHeight: 250, // Aumentado de 200 a 250
-    maxHeight: 400, // Agregado maxHeight
+    minHeight: 250,
+    maxHeight: 400,
   },
   sectionTitle: {
     fontSize: 14,
     fontWeight: '600',
     color: '#64748b',
-    marginBottom: 10, // Reducido de 12 a 10
+    marginBottom: 10,
   },
   stepTitle: {
     fontSize: 18,
@@ -627,32 +725,32 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#64748b',
     textAlign: 'center',
-    marginBottom: 16, // Reducido de 20 a 16
+    marginBottom: 16,
   },
   inputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     borderWidth: 1,
     borderColor: '#e2e8f0',
-    borderRadius: 10, // Reducido de 12 a 10
-    marginBottom: 12, // Reducido de 16 a 12
+    borderRadius: 10,
+    marginBottom: 12,
     paddingHorizontal: 12,
     backgroundColor: '#f8fafc',
   },
   input: {
     flex: 1,
-    paddingVertical: 10, // Reducido de 12 a 10
+    paddingVertical: 10,
     paddingHorizontal: 8,
-    fontSize: 15, // Reducido de 16 a 15
+    fontSize: 15,
   },
   searchButton: {
     backgroundColor: '#45c0e8',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 12, // Reducido de 14 a 12
-    borderRadius: 10, // Reducido de 12 a 10
-    marginTop: 6, // Reducido de 8 a 6
+    padding: 12,
+    borderRadius: 10,
+    marginTop: 6,
     gap: 8,
   },
   registerButton: {
@@ -660,7 +758,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 12, // Reducido de 14 a 12
+    padding: 12,
     borderRadius: 10,
     marginTop: 6,
     gap: 8,
@@ -690,7 +788,7 @@ const styles = StyleSheet.create({
   },
   buttonText: {
     color: 'white',
-    fontSize: 15, // Reducido de 16 a 15
+    fontSize: 15,
     fontWeight: '600',
   },
   cancelButtonText: {
@@ -706,7 +804,7 @@ const styles = StyleSheet.create({
   divider: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginVertical: 16, // Reducido de 20 a 16
+    marginVertical: 16,
   },
   dividerLine: {
     flex: 1,
@@ -719,12 +817,12 @@ const styles = StyleSheet.create({
     fontSize: 12,
   },
   contactsList: {
-    maxHeight: 350, // Ajustado para que quepa mejor
+    maxHeight: 350,
   },
   contactItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 10, // Reducido de 12 a 10
+    paddingVertical: 10,
     paddingHorizontal: 8,
     borderBottomWidth: 1,
     borderBottomColor: '#e2e8f0',
@@ -736,7 +834,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   contactName: {
-    fontSize: 15, // Reducido de 16 a 15
+    fontSize: 15,
     fontWeight: '600',
     color: '#1e293b',
     marginBottom: 2,
@@ -747,7 +845,7 @@ const styles = StyleSheet.create({
   },
   loadingContainer: {
     alignItems: 'center',
-    paddingVertical: 30, // Reducido de 40 a 30
+    paddingVertical: 30,
   },
   loadingText: {
     marginTop: 12,
@@ -756,10 +854,10 @@ const styles = StyleSheet.create({
   },
   emptyContainer: {
     alignItems: 'center',
-    paddingVertical: 30, // Reducido de 40 a 30
+    paddingVertical: 30,
   },
   emptyText: {
-    fontSize: 15, // Reducido de 16 a 15
+    fontSize: 15,
     fontWeight: '600',
     color: '#94a3b8',
     marginTop: 12,
@@ -774,53 +872,53 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   confirmTitle: {
-    fontSize: 18, // Reducido de 20 a 18
+    fontSize: 18,
     fontWeight: '700',
     color: '#27ae60',
     textAlign: 'center',
-    marginTop: 8, // Reducido de 12 a 8
-    marginBottom: 12, // Reducido de 16 a 12
+    marginTop: 8,
+    marginBottom: 12,
   },
   clientInfo: {
     backgroundColor: '#f0f9ff',
-    padding: 12, // Reducido de 16 a 12
-    borderRadius: 10, // Reducido de 12 a 10
-    marginBottom: 16, // Reducido de 20 a 16
+    padding: 12,
+    borderRadius: 10,
+    marginBottom: 16,
     borderWidth: 1,
     borderColor: '#45c0e8',
   },
   clientName: {
-    fontSize: 16, // Reducido de 18 a 16
+    fontSize: 16,
     fontWeight: '700',
     color: '#1e293b',
     marginBottom: 4,
   },
   clientDetail: {
-    fontSize: 13, // Reducido de 14 a 13
+    fontSize: 13,
     color: '#64748b',
     marginTop: 2,
   },
   orderSummary: {
     backgroundColor: '#f8fafc',
-    padding: 12, // Reducido de 16 a 12
+    padding: 12,
     borderRadius: 10,
     marginBottom: 16,
   },
   summaryTitle: {
-    fontSize: 15, // Reducido de 16 a 15
+    fontSize: 15,
     fontWeight: '700',
     color: '#1e293b',
-    marginBottom: 10, // Reducido de 12 a 10
+    marginBottom: 10,
   },
   orderItem: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    paddingVertical: 6, // Reducido de 8 a 6
+    paddingVertical: 6,
     borderBottomWidth: 1,
     borderBottomColor: '#e2e8f0',
   },
   orderItemName: {
-    fontSize: 13, // Reducido de 14 a 13
+    fontSize: 13,
     color: '#1e293b',
   },
   orderItemPrice: {
@@ -831,18 +929,18 @@ const styles = StyleSheet.create({
   orderTotal: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginTop: 10, // Reducido de 12 a 10
+    marginTop: 10,
     paddingTop: 10,
     borderTopWidth: 2,
     borderTopColor: '#cbd5e1',
   },
   orderTotalLabel: {
-    fontSize: 15, // Reducido de 16 a 15
+    fontSize: 15,
     fontWeight: '700',
     color: '#1e293b',
   },
   orderTotalValue: {
-    fontSize: 16, // Reducido de 18 a 16
+    fontSize: 16,
     fontWeight: '700',
     color: '#27ae60',
   },
