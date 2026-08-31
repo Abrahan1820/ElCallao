@@ -20,7 +20,7 @@ import { useNavigation, useFocusEffect } from "@react-navigation/native";
 import ProductSelectionModal from "./ProductSelectionModal";
 import PaymentMethodModal from "./PaymentMethodModal";
 import AdvanceCashModal from "./AdvanceCashModal";
-import RechargeModal from "./RechargeModal"; // Nuevo modal para recargas
+import RechargeModal from "./RechargeModal";
 import FiadoModal from "./FiadoModal";
 import Toast from "react-native-toast-message";
 
@@ -37,7 +37,7 @@ const BillingScreen = ({ navigation, route }) => {
   const [userData, setUserData] = useState(null);
   const [modalVisible, setModalVisible] = useState(false);
   const [advanceModalVisible, setAdvanceModalVisible] = useState(false);
-  const [rechargeModalVisible, setRechargeModalVisible] = useState(false); // Nuevo modal
+  const [rechargeModalVisible, setRechargeModalVisible] = useState(false);
   const [paymentModalVisible, setPaymentModalVisible] = useState(false);
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState(false);
@@ -67,8 +67,6 @@ const BillingScreen = ({ navigation, route }) => {
   const [subtotalVES, setSubtotalVES] = useState(0);
   const [TASA_CAMBIO, setTASA_CAMBIO] = useState(60);
 
-  
-
   // Cargar tasa del BCV
   const loadTasaBCV = async () => {
     try {
@@ -89,9 +87,7 @@ const BillingScreen = ({ navigation, route }) => {
     }
   };
 
-  // -----------------------------
-  // 👤 Obtener usuario desde AsyncStorage
-  // -----------------------------
+  // Obtener usuario desde AsyncStorage
   const getUserFromStorage = async () => {
     try {
       const session = await AsyncStorage.getItem("userSession");
@@ -107,20 +103,10 @@ const BillingScreen = ({ navigation, route }) => {
     }
   };
 
-  // -----------------------------
-  // 📦 Obtener empresaID a partir del usuario
-  // -----------------------------
   const getEmpresaIdFromUser = async (user) => {
     if (!user || !user.empresaID) return null;
     return user.empresaID;
   };
-
-  // -----------------------------
-  // 📦 Cargar categorías
-  // -----------------------------
-
- 
-
 
   const loadCategorias = async () => {
     try {
@@ -154,9 +140,6 @@ const BillingScreen = ({ navigation, route }) => {
     }
   };
 
-  // -----------------------------
-  // 📥 Cargar productos activos de la empresa
-  // -----------------------------
   const fetchProducts = async (empId) => {
     if (!empId) return [];
     
@@ -166,8 +149,8 @@ const BillingScreen = ({ navigation, route }) => {
         .select("*")
         .eq("empresaID", empId)
         .eq("esActivo", true)
-        .neq("id", 48) // Excluir avance de efectivo
-        .neq("id", 49); // Excluir recargas
+        .neq("id", 48)
+        .neq("id", 49);
       
       if (selectedCategoria !== "todas") {
         query = query.eq("categoriaID", selectedCategoria);
@@ -190,9 +173,6 @@ const BillingScreen = ({ navigation, route }) => {
     }
   };
 
-  // -----------------------------
-  // 🔄 Cargar todos los datos
-  // -----------------------------
   const loadAllData = async () => {
     setLoading(true);
     try {
@@ -244,7 +224,6 @@ const BillingScreen = ({ navigation, route }) => {
     }
   };
 
-  // Recargar productos cuando cambia el filtro de categoría
   useEffect(() => {
     if (empresaId) {
       const reloadProducts = async () => {
@@ -257,64 +236,56 @@ const BillingScreen = ({ navigation, route }) => {
     }
   }, [selectedCategoria]);
 
-  // -----------------------------
-  // 🔄 Cargar al iniciar
-  // -----------------------------
-
   const handleFiadoConfirm = (cliente) => {
-  setCart([]); // Limpiar carrito
-  setFiadoModalVisible(false);
-  setPaymentMethod(null);
-  setPagoMovilRef("");
-  setMixedPayment({ usd: "", ves: "", vesEfectivo: "" });
-  
-  // Recargar datos para actualizar stock
-  loadAllData();
-};
-
-
-  const actualizarTasaBCV = async () => {
-  try {
-    const response = await fetch(
-      "https://ve.dolarapi.com/v1/dolares/oficial"
-    );
-
-    const data = await response.json();
-
-    const tasa = data?.promedio;
-
-    if (!tasa) {
-      console.log("⚠️ No se pudo obtener la tasa BCV");
-      return;
-    }
-
-    console.log("📊 Nueva tasa BCV:", tasa);
-
-    const { error } = await supa
-      .from("tasaBCV")
-      .update({
-        precioVESUSD: tasa,
-        fecha: new Date().toISOString(),
-      })
-      .eq("id", 1);
-
-    if (error) {
-      console.log("❌ Error actualizando tasa:", error);
-    }
-  } catch (err) {
-    console.log("❌ Error consultando API:", err);
-  }
-};
-
-useEffect(() => {
-  const init = async () => {
-    await actualizarTasaBCV();
-    await loadAllData();
+    setCart([]);
+    setFiadoModalVisible(false);
+    setPaymentMethod(null);
+    setPagoMovilRef("");
+    setMixedPayment({ usd: "", ves: "", vesEfectivo: "" });
+    loadAllData();
   };
 
-  init();
-}, []);
-  
+  const actualizarTasaBCV = async () => {
+    try {
+      const response = await fetch(
+        "https://ve.dolarapi.com/v1/dolares/oficial"
+      );
+
+      const data = await response.json();
+
+      const tasa = data?.promedio;
+
+      if (!tasa) {
+        console.log("⚠️ No se pudo obtener la tasa BCV");
+        return;
+      }
+
+      console.log("📊 Nueva tasa BCV:", tasa);
+
+      const { error } = await supa
+        .from("tasaBCV")
+        .update({
+          precioVESUSD: tasa,
+          fecha: new Date().toISOString(),
+        })
+        .eq("id", 1);
+
+      if (error) {
+        console.log("❌ Error actualizando tasa:", error);
+      }
+    } catch (err) {
+      console.log("❌ Error consultando API:", err);
+    }
+  };
+
+  useEffect(() => {
+    const init = async () => {
+      await actualizarTasaBCV();
+      await loadAllData();
+    };
+
+    init();
+  }, []);
 
   useFocusEffect(
     useCallback(() => {
@@ -323,110 +294,117 @@ useEffect(() => {
       setPaymentMethod(null);
       setPagoMovilRef("");
       setMixedPayment({ usd: "", ves: "", vesEfectivo: "" });
+      setIsPayingDebt(false);
+      setCurrentClient(null);
+      setHasPreloaded(false);
     }, [])
   );
 
-
-// PRECARGA DE PRODUCTOS - obtener precios actuales
-useEffect(() => {
-  const params = route?.params;
-  console.log('🔍 useEffect precarga - params:', params);
-  
-  if (params?.preloadedProducts && params?.isPayingDebt && !hasPreloaded) {
-    console.log('✅ PRECARGANDO productos desde agenda');
+  // PRECARGA DE PRODUCTOS - obtener precios actuales
+  useEffect(() => {
+    const params = route?.params;
+    console.log('🔍 useEffect precarga - params:', params);
     
-    const loadProductsWithCurrentPrices = async () => {
-      try {
-        const productsToAdd = [];
-        
-        for (const product of params.preloadedProducts) {
-          // Obtener precio ACTUAL del producto
-          const { data: currentProduct, error } = await supa
-            .from("product")
-            .select("precioVentaUSD, precioVentaVES, precioCompraUSD, precioCompraVES, stockActual, nombre")
-            .eq("id", product.id)
-            .single();
+    if (params?.preloadedProducts && params?.isPayingDebt && !hasPreloaded) {
+      console.log('✅ PRECARGANDO productos desde agenda');
+      
+      const loadProductsWithCurrentPrices = async () => {
+        try {
+          const productsToAdd = [];
           
-          if (error) {
-            console.error('Error obteniendo producto:', error);
-            continue;
+          for (const product of params.preloadedProducts) {
+            // Obtener precio ACTUAL del producto
+            const { data: currentProduct, error } = await supa
+              .from("product")
+              .select("precioVentaUSD, precioVentaVES, precioCompraUSD, precioCompraVES, stockActual, nombre")
+              .eq("id", product.id)
+              .single();
+            
+            if (error) {
+              console.error('Error obteniendo producto:', error);
+              continue;
+            }
+            
+            // 🔥 IMPORTANTE: Generar un ID único para cada item del carrito
+            const uniqueId = `agenda_${product.id}_${product.waitListId}_${Date.now()}_${Math.random().toString(36).substring(7)}`;
+            
+            productsToAdd.push({
+              id: uniqueId, // ID único para React
+              originalId: product.id, // ID original del producto para BD
+              nombre: currentProduct.nombre,
+              cantidad: product.cantidad,
+              quantity: product.cantidad,
+              precioVentaVES: currentProduct.precioVentaVES,
+              precioVentaUSD: currentProduct.precioVentaUSD,
+              precioCompraUSD: currentProduct.precioCompraUSD || 0,
+              precioCompraVES: currentProduct.precioCompraVES || 0,
+              isFromAgenda: true,
+              waitListId: product.waitListId,
+              stockActual: currentProduct.stockActual,
+              productoOriginal: {
+                id: product.id,
+                nombre: currentProduct.nombre
+              }
+            });
           }
           
-          productsToAdd.push({
-            id: product.id,
-            nombre: currentProduct.nombre,
-            cantidad: product.cantidad,
-            quantity: product.cantidad,
-            precioVentaVES: currentProduct.precioVentaVES,
-            precioVentaUSD: currentProduct.precioVentaUSD,
-            precioCompraUSD: currentProduct.precioCompraUSD || 0,
-            precioCompraVES: currentProduct.precioCompraVES || 0,
-            isFromAgenda: true,
-            waitListId: product.waitListId,
-            stockActual: currentProduct.stockActual, // Stock actual real
+          console.log('🛒 Productos a agregar con IDs únicos:', productsToAdd);
+          setCart(productsToAdd);
+          setIsPayingDebt(true);
+          setCurrentClient(params.clientInfo);
+          setHasPreloaded(true);
+          
+          Toast.show({
+            type: 'info',
+            text1: 'Cobro de deuda',
+            text2: `Procesando pago de ${params.clientInfo.nombre} - ${productsToAdd.length} producto(s)`,
+            position: 'top',
+            visibilityTime: 4000,
           });
+        } catch (error) {
+          console.error('Error cargando precios actuales:', error);
         }
-        
-        console.log('🛒 Productos a agregar con precios actuales:', productsToAdd);
-        setCart(productsToAdd);
-        setIsPayingDebt(true);
-        setCurrentClient(params.clientInfo);
-        setHasPreloaded(true);
-        
-        Toast.show({
-          type: 'info',
-          text1: 'Cobro de deuda',
-          text2: `Procesando pago de ${params.clientInfo.nombre} - ${productsToAdd.length} producto(s)`,
-          position: 'top',
-          visibilityTime: 4000,
-        });
-      } catch (error) {
-        console.error('Error cargando precios actuales:', error);
-      }
-    };
-    
-    loadProductsWithCurrentPrices();
-  }
-}, [route?.params, hasPreloaded]);
-
-// -----------------------------
-// 🧮 Calcular totales - VERSIÓN CORREGIDA
-// -----------------------------
-useEffect(() => {
-  let totalVES = 0;
-  
-  cart.forEach(item => {
-    if (item.isAdvance) {
-      totalVES += item.precioVentaVES || 0;
-    } 
-    else if (item.isRecharge) {
-      totalVES += item.rechargeDetails?.totalConRecargo || 0;
-    } 
-    else {
-      totalVES += (item.precioVentaVES || 0) * (item.quantity || 1);
+      };
+      
+      loadProductsWithCurrentPrices();
     }
-  });
+  }, [route?.params, hasPreloaded]);
 
-  const totalUSD = TASA_CAMBIO > 0 ? totalVES / TASA_CAMBIO : 0;
+  useEffect(() => {
+    let totalVES = 0;
+    
+    cart.forEach(item => {
+      if (item.isAdvance) {
+        totalVES += item.precioVentaVES || 0;
+      } 
+      else if (item.isRecharge) {
+        totalVES += item.rechargeDetails?.totalConRecargo || 0;
+      } 
+      else {
+        totalVES += (item.precioVentaVES || 0) * (item.quantity || 1);
+      }
+    });
 
-  console.log('💰 SUBTOTALES CALCULADOS:', {
-    totalVES,
-    totalUSD,
-    tasa: TASA_CAMBIO,
-    items: cart.map(i => ({
-      nombre: i.nombre,
-      montoVES: i.isRecharge ? i.rechargeDetails?.totalConRecargo : (i.precioVentaVES * (i.quantity || 1)),
-      isAdvance: i.isAdvance,
-      isRecharge: i.isRecharge
-    }))
-  });
-  
-  setSubtotalVES(totalVES);
-  setSubtotalUSD(totalUSD);
-}, [cart, TASA_CAMBIO]);
-  // -----------------------------
-  // 🔍 Búsqueda de productos
-  // -----------------------------
+    const totalUSD = TASA_CAMBIO > 0 ? totalVES / TASA_CAMBIO : 0;
+
+    console.log('💰 SUBTOTALES CALCULADOS:', {
+      totalVES,
+      totalUSD,
+      tasa: TASA_CAMBIO,
+      items: cart.map(i => ({
+        id: i.id,
+        nombre: i.nombre,
+        montoVES: i.isRecharge ? i.rechargeDetails?.totalConRecargo : (i.precioVentaVES * (i.quantity || 1)),
+        isAdvance: i.isAdvance,
+        isRecharge: i.isRecharge,
+        isFromAgenda: i.isFromAgenda
+      }))
+    });
+    
+    setSubtotalVES(totalVES);
+    setSubtotalUSD(totalUSD);
+  }, [cart, TASA_CAMBIO]);
+
   const handleSearch = (text) => {
     setSearchText(text);
     
@@ -449,9 +427,6 @@ useEffect(() => {
     setFilteredProducts(filtered);
   };
 
-  // -----------------------------
-  // 🛒 Agregar producto normal al carrito
-  // -----------------------------
   const addToCart = (product, quantity) => {
     if (quantity > product.stockActual) {
       Toast.show({
@@ -464,7 +439,7 @@ useEffect(() => {
       return;
     }
 
-    const existingItem = cart.find(item => item.id === product.id);
+    const existingItem = cart.find(item => item.originalId === product.id && !item.isFromAgenda);
     
     if (existingItem) {
       const newQuantity = existingItem.quantity + quantity;
@@ -480,139 +455,119 @@ useEffect(() => {
       }
       
       setCart(cart.map(item => 
-        item.id === product.id 
+        item.originalId === product.id && !item.isFromAgenda
           ? { ...item, quantity: newQuantity }
           : item
       ));
     } else {
-      setCart([...cart, { ...product, quantity }]);
+      const newItem = { 
+        ...product, 
+        quantity,
+        id: `product_${product.id}_${Date.now()}_${Math.random().toString(36).substring(7)}`,
+        originalId: product.id
+      };
+      setCart([...cart, newItem]);
     }
     
     setQuantityModalVisible(false);
     setTempQuantity("1");
   };
 
-  // 💰 Agregar avance de efectivo al carrito
-const addAdvanceCash = (monto) => {
-  const montoConInteres = Math.ceil(monto * 1.2);
-  const interes = montoConInteres - monto;
-  
-  // Calcular valores en USD
-  const precioCompraUSD = monto / TASA_CAMBIO;           // Lo que entregamos en efectivo (costo en USD)
-  const precioVendidoUSD = montoConInteres / TASA_CAMBIO; // Lo que cobramos por débito (venta en USD)
-  
-  const advanceProduct = {
-    id: 'advance-cash',
-    nombre: '💰 AVANCE DE EFECTIVO',
-    descripcion: `Avance de efectivo - Monto entregado: Bs. ${monto}.`,
+  const addAdvanceCash = (monto) => {
+    const montoConInteres = Math.ceil(monto * 1.2);
+    const interes = montoConInteres - monto;
     
-    // Precios para cálculo de ganancia en USD
-    precioCompraUSD: precioCompraUSD,    // Costo en USD (lo que entregamos)
-    precioVendidoUSD: precioVendidoUSD,  // Precio de venta en USD (lo que cobramos)
+    const precioCompraUSD = monto / TASA_CAMBIO;
+    const precioVendidoUSD = montoConInteres / TASA_CAMBIO;
     
-    // Mantener los campos existentes como estaban
-    precioVentaUSD: 0,
-    precioVentaVES: montoConInteres,
-    precioVentaVESEfectivo: -monto,
-    
-    cantidad: 1,
-    isAdvance: true,
-    advanceDetails: {
-      montoEntregado: monto,
-      interes: interes,
-      totalConInteres: montoConInteres,
+    const advanceProduct = {
+      id: `advance_${Date.now()}_${Math.random().toString(36).substring(7)}`,
+      originalId: 'advance-cash',
+      nombre: '💰 AVANCE DE EFECTIVO',
+      descripcion: `Avance de efectivo - Monto entregado: Bs. ${monto}.`,
       precioCompraUSD: precioCompraUSD,
-      precioVendidoUSD: precioVendidoUSD
-    }
+      precioVendidoUSD: precioVendidoUSD,
+      precioVentaUSD: 0,
+      precioVentaVES: montoConInteres,
+      precioVentaVESEfectivo: -monto,
+      cantidad: 1,
+      isAdvance: true,
+      advanceDetails: {
+        montoEntregado: monto,
+        interes: interes,
+        totalConInteres: montoConInteres,
+        precioCompraUSD: precioCompraUSD,
+        precioVendidoUSD: precioVendidoUSD
+      }
+    };
+
+    console.log('💰 Agregando avance al carrito:', advanceProduct);
+
+    setCart([...cart, advanceProduct]);
+    setAdvanceModalVisible(false);
+    
+    Toast.show({
+      type: "success",
+      text1: "Avance agregado",
+      text2: `Monto: Bs. ${monto} + 20% (Bs. ${interes}) = Bs. ${montoConInteres}. Ganancia: $${(precioVendidoUSD - precioCompraUSD).toFixed(2)}`,
+      position: "top",
+      visibilityTime: 4000,
+    });
   };
 
-  console.log('💰 Agregando avance al carrito:', advanceProduct);
-  console.log('📊 Cálculos avance:', {
-    montoEntregado: monto,
-    montoConInteres,
-    tasa: TASA_CAMBIO,
-    precioCompraUSD,
-    precioVendidoUSD,
-    gananciaUSD: precioVendidoUSD - precioCompraUSD
-  });
-
-  setCart([...cart, advanceProduct]);
-  setAdvanceModalVisible(false);
-  
-  Toast.show({
-    type: "success",
-    text1: "Avance agregado",
-    text2: `Monto: Bs. ${monto} + 20% (Bs. ${interes}) = Bs. ${montoConInteres}. Ganancia: $${(precioVendidoUSD - precioCompraUSD).toFixed(2)}`,
-    position: "top",
-    visibilityTime: 4000,
-  });
-};
-
-
-// 📱 Agregar recarga al carrito
-const addRecharge = (monto) => {
-  const montoConRecargo = Math.ceil(monto * 1.2);
-  const recargo = montoConRecargo - monto;
-  
-  // Calcular valores en USD
-  const precioCompraUSD = monto / TASA_CAMBIO;      // Lo que cuesta la recarga en USD
-  const precioVendidoUSD = montoConRecargo / TASA_CAMBIO;  // Lo que se vende en USD
-  
-  const rechargeProduct = {
-    id: 'recharge-service',
-    nombre: '📱 RECARGA DE SERVICIO',
-    descripcion: `Recarga - Monto: Bs. ${monto} (Cliente paga: Bs. ${montoConRecargo})`,
+  const addRecharge = (monto) => {
+    const montoConRecargo = Math.ceil(monto * 1.2);
+    const recargo = montoConRecargo - monto;
     
-    // Precios para cálculo de ganancia en USD
-    precioCompraUSD: precioCompraUSD,    // Costo en USD
-    precioVendidoUSD: precioVendidoUSD,  // Precio de venta en USD
+    const precioCompraUSD = monto / TASA_CAMBIO;
+    const precioVendidoUSD = montoConRecargo / TASA_CAMBIO;
     
-    // Mantener los campos existentes como estaban
-    precioVentaUSD: 0,
-    precioVentaVES: -monto,
-    precioVentaVESEfectivo: 0,
-    
-    rechargeDetails: {
-      montoOriginal: monto,
-      recargo: recargo,
-      totalConRecargo: montoConRecargo,
+    const rechargeProduct = {
+      id: `recharge_${Date.now()}_${Math.random().toString(36).substring(7)}`,
+      originalId: 'recharge-service',
+      nombre: '📱 RECARGA DE SERVICIO',
+      descripcion: `Recarga - Monto: Bs. ${monto} (Cliente paga: Bs. ${montoConRecargo})`,
       precioCompraUSD: precioCompraUSD,
-      precioVendidoUSD: precioVendidoUSD
-    },
-    cantidad: 1,
-    isRecharge: true
+      precioVendidoUSD: precioVendidoUSD,
+      precioVentaUSD: 0,
+      precioVentaVES: -monto,
+      precioVentaVESEfectivo: 0,
+      rechargeDetails: {
+        montoOriginal: monto,
+        recargo: recargo,
+        totalConRecargo: montoConRecargo,
+        precioCompraUSD: precioCompraUSD,
+        precioVendidoUSD: precioVendidoUSD
+      },
+      cantidad: 1,
+      isRecharge: true
+    };
+
+    console.log('➕ Agregando recarga al carrito:', rechargeProduct);
+    
+    setCart([...cart, rechargeProduct]);
+    setRechargeModalVisible(false);
+    
+    Toast.show({
+      type: "success",
+      text1: "Recarga agregada",
+      text2: `Monto: Bs. ${monto} + 20% (Bs. ${recargo}) = Bs. ${montoConRecargo}`,
+      position: "top",
+      visibilityTime: 4000,
+    });
   };
 
-  console.log('➕ Agregando recarga al carrito:', rechargeProduct);
-  console.log('🛒 Carrito antes:', cart.length);
-  
-  setCart([...cart, rechargeProduct]);
-  
-  console.log('🛒 Carrito después (en teoría):', cart.length + 1);
-  
-  setRechargeModalVisible(false);
-  
-  Toast.show({
-    type: "success",
-    text1: "Recarga agregada",
-    text2: `Monto: Bs. ${monto} + 20% (Bs. ${recargo}) = Bs. ${montoConRecargo}`,
-    position: "top",
-    visibilityTime: 4000,
-  });
-};
-
-  // -----------------------------
-  // ❌ Eliminar producto del carrito
-  // -----------------------------
   const removeFromCart = (productId) => {
+    console.log('🗑️ Eliminando producto con ID:', productId);
     setCart(cart.filter(item => item.id !== productId));
   };
 
-  // -----------------------------
-  // 🔄 Actualizar cantidad de un producto en el carrito
-  // -----------------------------
   const updateCartQuantity = (productId, newQuantity) => {
-    if (productId === 'advance-cash' || productId === 'recharge-service') {
+    const item = cart.find(item => item.id === productId);
+    
+    if (!item) return;
+    
+    if (item.isAdvance || item.isRecharge) {
       Toast.show({
         type: "info",
         text1: "No disponible",
@@ -623,13 +578,11 @@ const addRecharge = (monto) => {
       return;
     }
 
-    const product = cart.find(item => item.id === productId);
-    
-    if (newQuantity > product.stockActual) {
+    if (newQuantity > item.stockActual) {
       Toast.show({
         type: "error",
         text1: "Stock insuficiente",
-        text2: `Solo hay ${product.stockActual} unidades disponibles`,
+        text2: `Solo hay ${item.stockActual} unidades disponibles`,
         position: "top",
         visibilityTime: 3000,
       });
@@ -647,9 +600,6 @@ const addRecharge = (monto) => {
     }
   };
 
-  // -----------------------------
-  // 💰 Manejar pago
-  // -----------------------------
   const handlePayment = () => {
     if (cart.length === 0) {
       Toast.show({
@@ -665,506 +615,436 @@ const addRecharge = (monto) => {
     setPaymentModalVisible(true);
   };
 
-  // ✅ Finalizar venta con método de pago
-  // ✅ Finalizar venta con método de pago
-const finalizeSaleWithPayment = async () => {
-  const tieneAvance = cart.some(item => item.isAdvance);
-  const tieneRecarga = cart.some(item => item.isRecharge);
-  
-  // Validar método de pago
-  if (!paymentMethod && !tieneRecarga) {
-    Toast.show({
-      type: "error",
-      text1: "Error",
-      text2: "Selecciona un método de pago",
-      position: "top",
-      visibilityTime: 3000,
-    });
-    return;
-  }
-
-  // Validar que el método de pago sea válido para avance de efectivo
-  if (tieneAvance && paymentMethod !== "debito" && paymentMethod !== "pagoMovil") {
-    Toast.show({
-      type: "error",
-      text1: "Error",
-      text2: "Para avance de efectivo solo puede usar Débito o Pago Móvil",
-      position: "top",
-      visibilityTime: 3000,
-    });
-    return;
-  }
-
-  // Validar pago móvil
-  if (paymentMethod === "pagoMovil") {
-    if (!pagoMovilRef || pagoMovilRef.length !== 4 || !/^\d+$/.test(pagoMovilRef)) {
+  const finalizeSaleWithPayment = async () => {
+    const tieneAvance = cart.some(item => item.isAdvance);
+    const tieneRecarga = cart.some(item => item.isRecharge);
+    
+    if (!paymentMethod && !tieneRecarga) {
       Toast.show({
         type: "error",
         text1: "Error",
-        text2: "Debe ingresar los últimos 4 dígitos de la referencia (solo números)",
+        text2: "Selecciona un método de pago",
         position: "top",
         visibilityTime: 3000,
       });
       return;
     }
-  }
 
-  // Validar pago mixto
-  // Validar pago mixto
-if (paymentMethod === "mixto") {
-  if (isNaN(subtotalVES) || !isFinite(subtotalVES) || subtotalVES <= 0) {
-    Toast.show({
-      type: "error",
-      text1: "Error",
-      text2: "No se puede calcular el total de la venta",
-      position: "top",
-      visibilityTime: 3000,
-    });
-    return;
-  }
-  
-  const usdAmount = parseFloat(mixedPayment.usd) || 0;
-  const vesAmount = parseFloat(mixedPayment.ves) || 0;
-  const vesEfectivoAmount = parseFloat(mixedPayment.vesEfectivo) || 0;
-  
-  // Convertir USD a VES
-  const usdEnVES = usdAmount * TASA_CAMBIO;
-  const totalPagadoVES = usdEnVES + vesAmount + vesEfectivoAmount;
-  
-  console.log('🔍 VALIDACIÓN PAGO MIXTO:', {
-    subtotalVES,
-    usdAmount,
-    vesAmount,
-    vesEfectivoAmount,
-    usdEnVES,
-    totalPagadoVES,
-    diferencia: Math.abs(totalPagadoVES - subtotalVES)
-  });
-  
-  // Tolerancia de 1 Bs. por redondeos
-  if (Math.abs(totalPagadoVES - subtotalVES) > 1) {
-    Toast.show({
-      type: "error",
-      text1: "Error",
-      text2: `La suma de los pagos (Bs. ${totalPagadoVES.toFixed(2)}) no coincide con el total (Bs. ${subtotalVES.toFixed(2)})`,
-      position: "top",
-      visibilityTime: 5000,
-    });
-    return;
-  }
-}
+    if (tieneAvance && paymentMethod !== "debito" && paymentMethod !== "pagoMovil") {
+      Toast.show({
+        type: "error",
+        text1: "Error",
+        text2: "Para avance de efectivo solo puede usar Débito o Pago Móvil",
+        position: "top",
+        visibilityTime: 3000,
+      });
+      return;
+    }
 
-  setProcessing(true);
-  try {
-    // 1. Verificar stock para productos normales
-    for (const item of cart) {
-      if (item.isAdvance || item.isRecharge) continue;
-      
-      const { data, error } = await supa
-        .from("product")
-        .select("stockActual")
-        .eq("id", item.id)
-        .single();
-
-      if (error) throw error;
-
-      if (data.stockActual < item.quantity) {
+    if (paymentMethod === "pagoMovil") {
+      if (!pagoMovilRef || pagoMovilRef.length !== 4 || !/^\d+$/.test(pagoMovilRef)) {
         Toast.show({
           type: "error",
           text1: "Error",
-          text2: `Stock insuficiente para ${item.nombre}. Stock actual: ${data.stockActual}`,
+          text2: "Debe ingresar los últimos 4 dígitos de la referencia (solo números)",
           position: "top",
           visibilityTime: 3000,
         });
-        setProcessing(false);
         return;
       }
     }
 
-    // 2. Actualizar stock y crear movimientos
-    for (const item of cart) {
-      if (item.isAdvance) {
-  // Obtener valores en USD desde advanceDetails
-  const precioCompraUSD = item.advanceDetails?.precioCompraUSD || (Math.abs(item.precioVentaVESEfectivo) / TASA_CAMBIO);
-  const precioVendidoUSD = item.advanceDetails?.precioVendidoUSD || (item.precioVentaVES / TASA_CAMBIO);
-  
-  // Movimiento para avance de efectivo
-  const movementData = {
-    productoID: 48,
-    tipoMovimiento: "salida",
-    cantidad: 1,
-    
-    // NUEVOS CAMPOS: precioCompraUSD y precioVendido para calcular ganancia
-    precioCompraUSD: precioCompraUSD,      // Lo que entregamos en efectivo (costo en USD)
-    precioVendido: precioVendidoUSD,       // Lo que cobramos por débito (venta en USD)
-    
-    // Mantener los campos existentes como estaban
-    precioVentaUSD: 0,
-    precioCompraVES: 0,
-    precioVentaVES: item.precioVentaVES,              // Monto a cobrar por débito
-    precioVentaVESEfectivo: item.precioVentaVESEfectivo, // Monto entregado en efectivo (negativo)
-    
-    empresaID: empresaId,
-    tipoTransaccion: "Avance Efectivo",
-    pagoMovil: paymentMethod === "pagoMovil" ? parseInt(pagoMovilRef) : null,
-    observaciones: `Avance de efectivo: Entrega Bs. ${Math.abs(item.precioVentaVESEfectivo)} + 20% = Cobro Bs. ${item.precioVentaVES}. Costo USD: $${precioCompraUSD.toFixed(2)} | Venta USD: $${precioVendidoUSD.toFixed(2)} | Ganancia USD: $${(precioVendidoUSD - precioCompraUSD).toFixed(2)}`,
-    usuarioCedula: userData?.cedula
-  };
-  
-  console.log('📝 INSERTANDO AVANCE CON GANANCIA:', movementData);
-  console.log('💵 GANANCIA ESPERADA USD:', precioVendidoUSD - precioCompraUSD);
-  
-  const { error: movementError } = await supa
-    .from("productMovement")
-    .insert(movementData);
-
-  if (movementError) throw movementError;
-}
-else if (item.isRecharge) {
-  // Determinar valores según el método de pago seleccionado
-  let precioVentaUSD = 0;
-  let precioVentaVES = 0;
-  let precioVentaVESEfectivo = 0;
-  let tipoTransaccion = "";
-  
-  console.log('📱 Procesando recarga con método:', paymentMethod);
-  console.log('📱 Detalles de recarga:', item.rechargeDetails);
-  console.log('📱 mixedPayment actual:', mixedPayment);
-  
-  const totalConRecargo = item.rechargeDetails.totalConRecargo;
-  const montoOriginal = item.rechargeDetails.montoOriginal;
-  
-  // Obtener valores en USD para guardar
-  const precioCompraUSD = item.rechargeDetails.precioCompraUSD || (montoOriginal / TASA_CAMBIO);
-  const precioVendidoUSD = item.rechargeDetails.precioVendidoUSD || (totalConRecargo / TASA_CAMBIO);
-  
-  switch (paymentMethod) {
-    case "debito":
-      // Todo el pago es en débito
-      precioVentaVES = totalConRecargo - montoOriginal; // Se descuenta el monto original
-      tipoTransaccion = "Recarga Débito";
-      console.log('  → Débito: Bs.', precioVentaVES, '(descuento del monto original)');
-      break;
+    if (paymentMethod === "mixto") {
+      if (isNaN(subtotalVES) || !isFinite(subtotalVES) || subtotalVES <= 0) {
+        Toast.show({
+          type: "error",
+          text1: "Error",
+          text2: "No se puede calcular el total de la venta",
+          position: "top",
+          visibilityTime: 3000,
+        });
+        return;
+      }
       
-    case "pagoMovil":
-      // Todo el pago es en pago móvil
-      precioVentaVES = totalConRecargo - montoOriginal; // Se descuenta el monto original
-      tipoTransaccion = "Recarga Pago Móvil";
-      console.log('  → Pago Móvil: Bs.', precioVentaVES, '(descuento del monto original)');
-      break;
-      
-    case "efectivoUSD":
-      // Pago en efectivo USD, no afecta débito
-      precioVentaVES = -montoOriginal; // No hay egreso de débito
-      precioVentaUSD = totalConRecargo / TASA_CAMBIO;
-      tipoTransaccion = "Recarga Efectivo USD";
-      console.log('  → Efectivo USD: $', precioVentaUSD);
-      break;
-      
-    case "efectivoVES":
-      // Pago en efectivo VES, no afecta débito
-      precioVentaVES = -montoOriginal; // No hay egreso de débito
-      precioVentaVESEfectivo = totalConRecargo;
-      tipoTransaccion = "Recarga Efectivo VES";
-      console.log('  → Efectivo VES: Bs.', precioVentaVESEfectivo);
-      break;
-      
-    case "mixto":
-      // Usar los valores de mixedPayment directamente
       const usdAmount = parseFloat(mixedPayment.usd) || 0;
       const vesAmount = parseFloat(mixedPayment.ves) || 0;
       const vesEfectivoAmount = parseFloat(mixedPayment.vesEfectivo) || 0;
       
-      console.log('  → Valores mixtos recibidos:', {
+      const usdEnVES = usdAmount * TASA_CAMBIO;
+      const totalPagadoVES = usdEnVES + vesAmount + vesEfectivoAmount;
+      
+      console.log('🔍 VALIDACIÓN PAGO MIXTO:', {
+        subtotalVES,
         usdAmount,
         vesAmount,
-        vesEfectivoAmount
-      });
-      
-      // Convertir USD a VES
-      const usdEnVES = usdAmount * TASA_CAMBIO;
-      
-      // Calcular total pagado en VES
-      const totalPagadoVES = usdEnVES + vesAmount + vesEfectivoAmount;
-      
-      console.log('  → Cálculos:', {
-        usdEnVES,
-        vesAmount,
         vesEfectivoAmount,
+        usdEnVES,
         totalPagadoVES,
-        subtotalVES,
-        montoOriginal
+        diferencia: Math.abs(totalPagadoVES - subtotalVES)
       });
       
-      // Para el débito: se descuenta el monto original MENOS lo que se pagó en débito
-      precioVentaVES = -(montoOriginal - vesAmount);
-      
-      // El ingreso se distribuye según corresponda
-      if (usdAmount > 0) {
-        precioVentaUSD = (totalConRecargo * (usdEnVES / totalPagadoVES)) / TASA_CAMBIO;
+      if (Math.abs(totalPagadoVES - subtotalVES) > 1) {
+        Toast.show({
+          type: "error",
+          text1: "Error",
+          text2: `La suma de los pagos (Bs. ${totalPagadoVES.toFixed(2)}) no coincide con el total (Bs. ${subtotalVES.toFixed(2)})`,
+          position: "top",
+          visibilityTime: 5000,
+        });
+        return;
       }
-      
-      if (vesEfectivoAmount > 0) {
-        precioVentaVESEfectivo = totalConRecargo * (vesEfectivoAmount / totalPagadoVES);
+    }
+
+    setProcessing(true);
+    try {
+      // 1. Verificar stock para productos normales (solo los que NO son de agenda)
+      for (const item of cart) {
+        if (item.isAdvance || item.isRecharge || item.isFromAgenda) continue;
+        
+        const { data, error } = await supa
+          .from("product")
+          .select("stockActual")
+          .eq("id", item.originalId || item.id)
+          .single();
+
+        if (error) throw error;
+
+        if (data.stockActual < item.quantity) {
+          Toast.show({
+            type: "error",
+            text1: "Error",
+            text2: `Stock insuficiente para ${item.nombre}. Stock actual: ${data.stockActual}`,
+            position: "top",
+            visibilityTime: 3000,
+          });
+          setProcessing(false);
+          return;
+        }
       }
+
+      // 2. Procesar cada item del carrito
+      for (const item of cart) {
+        if (item.isAdvance) {
+          const precioCompraUSD = item.advanceDetails?.precioCompraUSD || (Math.abs(item.precioVentaVESEfectivo) / TASA_CAMBIO);
+          const precioVendidoUSD = item.advanceDetails?.precioVendidoUSD || (item.precioVentaVES / TASA_CAMBIO);
+          
+          const movementData = {
+            productoID: 48,
+            tipoMovimiento: "salida",
+            cantidad: 1,
+            precioCompraUSD: precioCompraUSD,
+            precioVendido: precioVendidoUSD,
+            precioVentaUSD: 0,
+            precioCompraVES: 0,
+            precioVentaVES: item.precioVentaVES,
+            precioVentaVESEfectivo: item.precioVentaVESEfectivo,
+            empresaID: empresaId,
+            tipoTransaccion: "Avance Efectivo",
+            pagoMovil: paymentMethod === "pagoMovil" ? parseInt(pagoMovilRef) : null,
+            observaciones: `Avance de efectivo: Entrega Bs. ${Math.abs(item.precioVentaVESEfectivo)} + 20% = Cobro Bs. ${item.precioVentaVES}. Costo USD: $${precioCompraUSD.toFixed(2)} | Venta USD: $${precioVendidoUSD.toFixed(2)} | Ganancia USD: $${(precioVendidoUSD - precioCompraUSD).toFixed(2)}`,
+            usuarioCedula: userData?.cedula
+          };
+          
+          console.log('📝 INSERTANDO AVANCE CON GANANCIA:', movementData);
+          
+          const { error: movementError } = await supa
+            .from("productMovement")
+            .insert(movementData);
+
+          if (movementError) throw movementError;
+        }
+        else if (item.isRecharge) {
+          let precioVentaUSD = 0;
+          let precioVentaVES = 0;
+          let precioVentaVESEfectivo = 0;
+          let tipoTransaccion = "";
+          
+          console.log('📱 Procesando recarga con método:', paymentMethod);
+          
+          const totalConRecargo = item.rechargeDetails.totalConRecargo;
+          const montoOriginal = item.rechargeDetails.montoOriginal;
+          
+          const precioCompraUSD = item.rechargeDetails.precioCompraUSD || (montoOriginal / TASA_CAMBIO);
+          const precioVendidoUSD = item.rechargeDetails.precioVendidoUSD || (totalConRecargo / TASA_CAMBIO);
+          
+          switch (paymentMethod) {
+            case "debito":
+              precioVentaVES = totalConRecargo - montoOriginal;
+              tipoTransaccion = "Recarga Débito";
+              break;
+              
+            case "pagoMovil":
+              precioVentaVES = totalConRecargo - montoOriginal;
+              tipoTransaccion = "Recarga Pago Móvil";
+              break;
+              
+            case "efectivoUSD":
+              precioVentaVES = -montoOriginal;
+              precioVentaUSD = totalConRecargo / TASA_CAMBIO;
+              tipoTransaccion = "Recarga Efectivo USD";
+              break;
+              
+            case "efectivoVES":
+              precioVentaVES = -montoOriginal;
+              precioVentaVESEfectivo = totalConRecargo;
+              tipoTransaccion = "Recarga Efectivo VES";
+              break;
+              
+            case "mixto":
+              const usdAmount = parseFloat(mixedPayment.usd) || 0;
+              const vesAmount = parseFloat(mixedPayment.ves) || 0;
+              const vesEfectivoAmount = parseFloat(mixedPayment.vesEfectivo) || 0;
+              
+              const usdEnVES = usdAmount * TASA_CAMBIO;
+              const totalPagadoVES = usdEnVES + vesAmount + vesEfectivoAmount;
+              
+              precioVentaVES = -(montoOriginal - vesAmount);
+              
+              if (usdAmount > 0) {
+                precioVentaUSD = (totalConRecargo * (usdEnVES / totalPagadoVES)) / TASA_CAMBIO;
+              }
+              
+              if (vesEfectivoAmount > 0) {
+                precioVentaVESEfectivo = totalConRecargo * (vesEfectivoAmount / totalPagadoVES);
+              }
+              
+              tipoTransaccion = "Recarga Mixta";
+              break;
+              
+            default:
+              precioVentaVES = -montoOriginal;
+              tipoTransaccion = "Recarga";
+              break;
+          }
+          
+          const movementData = {
+            productoID: 49,
+            tipoMovimiento: "salida",
+            cantidad: 1,
+            precioCompraUSD: precioCompraUSD,
+            precioVendido: precioVendidoUSD,
+            precioVentaUSD: precioVentaUSD,
+            precioCompraVES: 0,
+            precioVentaVES: precioVentaVES,
+            precioVentaVESEfectivo: precioVentaVESEfectivo,
+            empresaID: empresaId,
+            tipoTransaccion: tipoTransaccion,
+            pagoMovil: paymentMethod === "pagoMovil" ? parseInt(pagoMovilRef) : null,
+            observaciones: `Recarga: Bs. ${item.rechargeDetails.montoOriginal} + 20% = Bs. ${item.rechargeDetails.totalConRecargo}. Costo USD: $${precioCompraUSD.toFixed(2)} | Venta USD: $${precioVendidoUSD.toFixed(2)} | Ganancia USD: $${(precioVendidoUSD - precioCompraUSD).toFixed(2)}`,
+            usuarioCedula: userData?.cedula
+          };
+          
+          console.log('📝 INSERTANDO RECARGA:', movementData);
+          
+          const { error: movementError } = await supa
+            .from("productMovement")
+            .insert(movementData);
+
+          if (movementError) throw movementError;
+        }
+        else {
+          // PRODUCTOS NORMALES (incluyendo los de agenda)
+          const productId = item.originalId || item.id;
+          
+          // 🔥 Si es de agenda, NO actualizar stock
+          if (!item.isFromAgenda) {
+            const { error: updateError } = await supa
+              .from("product")
+              .update({ stockActual: item.stockActual - item.quantity })
+              .eq("id", productId);
+
+            if (updateError) throw updateError;
+          } else {
+            console.log('💰 Pago de deuda - NO se descuenta stock para:', item.nombre);
+          }
+
+          let precioVentaUSD = 0;
+          let precioVentaVES = 0;
+          let precioVentaVESEfectivo = 0;
+          let tipoTransaccion = "";
+          let pagoMovil = null;
+          let precioVendidoUSD = 0;
+
+          const { data: currentProduct, error: productError } = await supa
+            .from("product")
+            .select("precioVentaUSD, precioVentaVES, precioCompraUSD, precioCompraVES")
+            .eq("id", productId)
+            .single();
+
+          if (productError) {
+            console.error('Error obteniendo producto actual:', productError);
+            throw productError;
+          }
+
+          const itemTotalVES = (currentProduct.precioVentaVES || 0) * (item.quantity || 1);
+          const itemTotalUSD = (currentProduct.precioVentaUSD || 0) * (item.quantity || 1);
+          const precioCompraUSD = currentProduct.precioCompraUSD || 0;
+
+          console.log('💰 Procesando producto:', {
+            id: item.id,
+            originalId: item.originalId,
+            nombre: item.nombre,
+            isFromAgenda: item.isFromAgenda,
+            itemTotalVES,
+            itemTotalUSD,
+            precioCompraUSD,
+            paymentMethod
+          });
+
+          switch (paymentMethod) {
+            case "debito":
+              precioVentaVES = itemTotalVES;
+              precioVendidoUSD = itemTotalVES / TASA_CAMBIO;
+              tipoTransaccion = item.isFromAgenda ? "Debito" : "Debito";
+              break;
+              
+            case "pagoMovil":
+              precioVentaVES = itemTotalVES;
+              precioVendidoUSD = itemTotalVES / TASA_CAMBIO;
+              tipoTransaccion = item.isFromAgenda ? "Pago Movil" : "Pago Movil";
+              pagoMovil = parseInt(pagoMovilRef);
+              break;
+              
+            case "efectivoUSD":
+              precioVentaUSD = itemTotalUSD;
+              precioVendidoUSD = itemTotalUSD;
+              tipoTransaccion = item.isFromAgenda ? "Efectivo USD" : "Efectivo USD";
+              break;
+              
+            case "efectivoVES":
+              precioVentaVESEfectivo = itemTotalVES;
+              precioVendidoUSD = itemTotalVES / TASA_CAMBIO;
+              tipoTransaccion = item.isFromAgenda ? "Efectivo VES" : "Efectivo VES";
+              break;
+              
+            case "mixto":
+              const usdAmount = parseFloat(mixedPayment.usd) || 0;
+              const vesAmount = parseFloat(mixedPayment.ves) || 0;
+              const vesEfectivoAmount = parseFloat(mixedPayment.vesEfectivo) || 0;
+              
+              const usdEnVES = usdAmount * TASA_CAMBIO;
+              const totalPagadoVES = usdEnVES + vesAmount + vesEfectivoAmount;
+              
+              if (totalPagadoVES <= 0) {
+                precioVentaVES = itemTotalVES;
+                precioVendidoUSD = itemTotalVES / TASA_CAMBIO;
+                tipoTransaccion = item.isFromAgenda ? "Debito" : "Debito (fallback)";
+              } else {
+                const proporcionUSD = usdEnVES / totalPagadoVES;
+                const proporcionVESDebito = vesAmount / totalPagadoVES;
+                const proporcionVESEfectivo = vesEfectivoAmount / totalPagadoVES;
+                
+                precioVentaUSD = (itemTotalVES * proporcionUSD) / TASA_CAMBIO;
+                precioVentaVES = itemTotalVES * proporcionVESDebito;
+                precioVentaVESEfectivo = itemTotalVES * proporcionVESEfectivo;
+                
+                precioVendidoUSD = (itemTotalVES * (usdEnVES / totalPagadoVES)) / TASA_CAMBIO + 
+                                   (itemTotalVES * (vesAmount / totalPagadoVES)) / TASA_CAMBIO + 
+                                   (itemTotalVES * (vesEfectivoAmount / totalPagadoVES)) / TASA_CAMBIO;
+                
+                tipoTransaccion = item.isFromAgenda ? "Mixto" : "Mixto";
+              }
+              break;
+              
+            default:
+              precioVentaVES = itemTotalVES;
+              precioVendidoUSD = itemTotalVES / TASA_CAMBIO;
+              tipoTransaccion = item.isFromAgenda ? "Debito" : "Debito (default)";
+              break;
+          }
+
+          const movementData = {
+            productoID: productId,
+            tipoMovimiento: "salida",
+            cantidad: item.quantity,
+            precioCompraUSD: precioCompraUSD,
+            precioVendido: precioVendidoUSD,
+            precioVentaUSD: precioVentaUSD,
+            precioCompraVES: currentProduct.precioCompraVES || 0,
+            precioVentaVES: precioVentaVES,
+            precioVentaVESEfectivo: precioVentaVESEfectivo,
+            empresaID: empresaId,
+            tipoTransaccion: tipoTransaccion,
+            pagoMovil: pagoMovil,
+            observaciones: item.isFromAgenda 
+              ? `PAGO DE DEUDA - Cliente: ${currentClient?.nombre} (${currentClient?.cedula}) - ${item.nombre} x${item.quantity}`
+              : `Venta: ${item.nombre} x${item.quantity}. Costo USD: $${precioCompraUSD.toFixed(2)} | Venta USD: $${precioVendidoUSD.toFixed(2)} | Ganancia USD: $${(precioVendidoUSD - precioCompraUSD).toFixed(2)}`,
+            usuarioCedula: userData?.cedula
+          };
+          
+          console.log('📝 INSERTANDO MOVIMIENTO:', movementData);
+
+          const { error: movementError } = await supa
+            .from("productMovement")
+            .insert(movementData);
+
+          if (movementError) {
+            console.error('❌ Error insertando movimiento:', movementError);
+            throw movementError;
+          }
+        }
+      }
+
+      // Marcar deudas como pagadas
+      if (isPayingDebt && currentClient) {
+        console.log('💰 Marcando deudas como pagadas para cliente:', currentClient.cedula);
+        
+        for (const item of cart) {
+          if (item.isFromAgenda && item.waitListId) {
+            const { error: updateError } = await supa
+              .from('productMovementWaitList')
+              .update({ 
+                pagado: true, 
+                fecha_pago: new Date().toISOString() 
+              })
+              .eq('id', item.waitListId);
+
+            if (updateError) {
+              console.error('❌ Error marcando como pagado:', updateError);
+              throw updateError;
+            } else {
+              console.log('✅ Marcado como pagado ID:', item.waitListId);
+            }
+          }
+        }
+      }
+
+      // Limpiar estados de agenda
+      setIsPayingDebt(false);
+      setCurrentClient(null);
+      setHasPreloaded(false);
+
+      // Limpiar todo
+      setCart([]);
+      setPaymentMethod(null);
+      setPagoMovilRef("");
+      setMixedPayment({ usd: "", ves: "", vesEfectivo: "" });
+      setPaymentModalVisible(false);
       
-      tipoTransaccion = "Recarga Mixta";
-      
-      console.log('  → Resultado distribución:', {
-        montoOriginal,
-        pagadoEnDebito: vesAmount,
-        egresoNetoDebito: precioVentaVES,
-        precioVentaUSD,
-        precioVentaVESEfectivo
+      Toast.show({
+        type: "success",
+        text1: "Éxito",
+        text2: "Venta realizada correctamente",
+        position: "top",
+        visibilityTime: 3000,
       });
-      break;
       
-    default:
-      console.log('  ⚠️ Método de pago no reconocido:', paymentMethod);
-      precioVentaVES = -montoOriginal;
-      tipoTransaccion = "Recarga";
-      break;
-  }
-  
-  const movementData = {
-    productoID: 49,
-    tipoMovimiento: "salida",
-    cantidad: 1,
-    
-    // NUEVOS CAMPOS: precioCompraUSD y precioVendido (precioVentaUSD se mantiene para el método de pago)
-    precioCompraUSD: precioCompraUSD,      // Costo de la recarga en USD
-    precioVendido: precioVendidoUSD,    // Precio de venta en USD
-    
-    // Mantener los campos existentes como estaban
-    precioVentaUSD: precioVentaUSD,        // Para pago en efectivo USD
-    precioCompraVES: 0,
-    precioVentaVES: precioVentaVES,        // Egreso neto del débito
-    precioVentaVESEfectivo: precioVentaVESEfectivo, // Para pago en efectivo VES
-    
-    empresaID: empresaId,
-    tipoTransaccion: tipoTransaccion,
-    pagoMovil: paymentMethod === "pagoMovil" ? parseInt(pagoMovilRef) : null,
-    observaciones: `Recarga: Bs. ${item.rechargeDetails.montoOriginal} + 20% = Bs. ${item.rechargeDetails.totalConRecargo}. Costo USD: $${precioCompraUSD.toFixed(2)} | Venta USD: $${precioVendidoUSD.toFixed(2)} | Ganancia USD: $${(precioVendidoUSD - precioCompraUSD).toFixed(2)}`,
-    usuarioCedula: userData?.cedula
-  };
-  
-  console.log('📝 INSERTANDO RECARGA:', movementData);
-  
-  const { error: movementError } = await supa
-    .from("productMovement")
-    .insert(movementData);
+      loadAllData();
 
-  if (movementError) throw movementError;
-}
-
-
-else {
-  // 🚨 IMPORTANTE: Si es pago de deuda, NO actualizar stock
-  if (!item.isFromAgenda) {
-    // Solo actualizar stock si NO es de agenda (venta normal)
-    const { error: updateError } = await supa
-      .from("product")
-      .update({ stockActual: item.stockActual - item.quantity })
-      .eq("id", item.id);
-
-    if (updateError) throw updateError;
-  } else {
-    console.log('💰 Pago de deuda - NO se descuenta stock para:', item.nombre);
-  }
-
-  let precioVentaUSD = 0;
-  let precioVentaVES = 0;
-  let precioVentaVESEfectivo = 0;
-  let tipoTransaccion = "";
-  let pagoMovil = null;
-  let precioVendidoUSD = 0;
-
-  // Obtener datos ACTUALES del producto para el movimiento
-  const { data: currentProduct, error: productError } = await supa
-    .from("product")
-    .select("precioVentaUSD, precioVentaVES, precioCompraUSD, precioCompraVES")
-    .eq("id", item.id)
-    .single();
-
-  if (productError) {
-    console.error('Error obteniendo producto actual:', productError);
-    throw productError;
-  }
-
-  // Usar precios ACTUALES del producto
-  const itemTotalVES = (currentProduct.precioVentaVES || 0) * (item.quantity || 1);
-  const itemTotalUSD = (currentProduct.precioVentaUSD || 0) * (item.quantity || 1);
-  const precioCompraUSD = currentProduct.precioCompraUSD || 0;
-
-  console.log('💰 Procesando producto:', {
-    nombre: item.nombre,
-    isFromAgenda: item.isFromAgenda,
-    itemTotalVES,
-    itemTotalUSD,
-    precioCompraUSD,
-    paymentMethod
-  });
-
-  switch (paymentMethod) {
-    case "debito":
-      precioVentaVES = itemTotalVES;
-      precioVendidoUSD = itemTotalVES / TASA_CAMBIO;
-      tipoTransaccion = item.isFromAgenda ? "Debito" : "Debito";
-      console.log('  → Débito: Bs.', precioVentaVES, '| USD:', precioVendidoUSD);
-      break;
-      
-    case "pagoMovil":
-      precioVentaVES = itemTotalVES;
-      precioVendidoUSD = itemTotalVES / TASA_CAMBIO;
-      tipoTransaccion = item.isFromAgenda ? "Pago Movil" : "Pago Movil";
-      pagoMovil = parseInt(pagoMovilRef);
-      console.log('  → Pago Móvil: Bs.', precioVentaVES, '| USD:', precioVendidoUSD);
-      break;
-      
-    case "efectivoUSD":
-      precioVentaUSD = itemTotalUSD;
-      precioVendidoUSD = itemTotalUSD;
-      tipoTransaccion = item.isFromAgenda ? "Efectivo USD" : "Efectivo USD";
-      console.log('  → Efectivo USD: $', precioVentaUSD);
-      break;
-      
-    case "efectivoVES":
-      precioVentaVESEfectivo = itemTotalVES;
-      precioVendidoUSD = itemTotalVES / TASA_CAMBIO;
-      tipoTransaccion = item.isFromAgenda ? "Efectivo VES" : "Efectivo VES";
-      console.log('  → Efectivo VES: Bs.', precioVentaVESEfectivo, '| USD:', precioVendidoUSD);
-      break;
-      
-    case "mixto":
-      const usdAmount = parseFloat(mixedPayment.usd) || 0;
-      const vesAmount = parseFloat(mixedPayment.ves) || 0;
-      const vesEfectivoAmount = parseFloat(mixedPayment.vesEfectivo) || 0;
-      
-      const usdEnVES = usdAmount * TASA_CAMBIO;
-      const totalPagadoVES = usdEnVES + vesAmount + vesEfectivoAmount;
-      
-      if (totalPagadoVES <= 0) {
-        precioVentaVES = itemTotalVES;
-        precioVendidoUSD = itemTotalVES / TASA_CAMBIO;
-        tipoTransaccion = item.isFromAgenda ? "Debito" : "Debito (fallback)";
-      } else {
-        const proporcionUSD = usdEnVES / totalPagadoVES;
-        const proporcionVESDebito = vesAmount / totalPagadoVES;
-        const proporcionVESEfectivo = vesEfectivoAmount / totalPagadoVES;
-        
-        precioVentaUSD = (itemTotalVES * proporcionUSD) / TASA_CAMBIO;
-        precioVentaVES = itemTotalVES * proporcionVESDebito;
-        precioVentaVESEfectivo = itemTotalVES * proporcionVESEfectivo;
-        
-        precioVendidoUSD = (itemTotalVES * (usdEnVES / totalPagadoVES)) / TASA_CAMBIO + 
-                           (itemTotalVES * (vesAmount / totalPagadoVES)) / TASA_CAMBIO + 
-                           (itemTotalVES * (vesEfectivoAmount / totalPagadoVES)) / TASA_CAMBIO;
-        
-        tipoTransaccion = item.isFromAgenda ? "Mixto" : "Mixto";
-      }
-      break;
-      
-    default:
-      precioVentaVES = itemTotalVES;
-      precioVendidoUSD = itemTotalVES / TASA_CAMBIO;
-      tipoTransaccion = item.isFromAgenda ? "Debito" : "Debito (default)";
-      break;
-  }
-
-  const movementData = {
-    productoID: item.id,
-    tipoMovimiento: "salida",
-    cantidad: item.quantity,
-    precioCompraUSD: precioCompraUSD,
-    precioVendido: precioVendidoUSD,
-    precioVentaUSD: precioVentaUSD,
-    precioCompraVES: currentProduct.precioCompraVES || 0,
-    precioVentaVES: precioVentaVES,
-    precioVentaVESEfectivo: precioVentaVESEfectivo,
-    empresaID: empresaId,
-    tipoTransaccion: tipoTransaccion,
-    pagoMovil: pagoMovil,
-    observaciones: item.isFromAgenda 
-      ? `PAGO DE DEUDA - Cliente: ${currentClient?.nombre} (${currentClient?.cedula}) - ${item.nombre} x${item.quantity}`
-      : `Venta: ${item.nombre} x${item.quantity}. Costo USD: $${precioCompraUSD.toFixed(2)} | Venta USD: $${precioVendidoUSD.toFixed(2)} | Ganancia USD: $${(precioVendidoUSD - precioCompraUSD).toFixed(2)}`,
-    usuarioCedula: userData?.cedula
-  };
-  
-  console.log('📝 INSERTANDO MOVIMIENTO:', movementData);
-
-  const { error: movementError } = await supa
-    .from("productMovement")
-    .insert(movementData);
-
-  if (movementError) {
-    console.error('❌ Error insertando movimiento:', movementError);
-    throw movementError;
-  }
-}
+    } catch (error) {
+      console.error("❌ ERROR FINALIZANDO VENTA:", error);
+      Toast.show({
+        type: "error",
+        text1: "Error",
+        text2: "No se pudo completar la venta",
+        position: "top",
+        visibilityTime: 3000,
+      });
+    } finally {
+      setProcessing(false);
     }
+  };
 
-    if (isPayingDebt && currentClient) {
-  console.log('💰 Marcando deudas como pagadas para cliente:', currentClient.cedula);
-  console.log('💰 Items a marcar:', cart.filter(item => item.isFromAgenda).map(i => ({ id: i.waitListId, nombre: i.nombre })));
-  
-  for (const item of cart) {
-    if (item.isFromAgenda && item.waitListId) {
-      const { error: updateError } = await supa
-        .from('productMovementWaitList')
-        .update({ 
-          pagado: true, 
-          fecha_pago: new Date().toISOString() 
-        })
-        .eq('id', item.waitListId);
-
-      if (updateError) {
-        console.error('❌ Error marcando como pagado:', updateError);
-        throw updateError;
-      } else {
-        console.log('✅ Marcado como pagado ID:', item.waitListId);
-      }
-    }
-  }
-}
-
-// Limpiar estados de agenda
-setIsPayingDebt(false);
-setCurrentClient(null);
-
-    // 3. Limpiar todo
-    setCart([]);
-    setPaymentMethod(null);
-    setPagoMovilRef("");
-    setMixedPayment({ usd: "", ves: "", vesEfectivo: "" });
-    setPaymentModalVisible(false);
-    
-    Toast.show({
-      type: "success",
-      text1: "Éxito",
-      text2: "Venta realizada correctamente",
-      position: "top",
-      visibilityTime: 3000,
-    });
-    
-    loadAllData();
-
-  } catch (error) {
-    console.error("❌ ERROR FINALIZANDO VENTA:", error);
-    Toast.show({
-      type: "error",
-      text1: "Error",
-      text2: "No se pudo completar la venta",
-      position: "top",
-      visibilityTime: 3000,
-    });
-  } finally {
-    setProcessing(false);
-  }
-};
-
-  // -----------------------------
-  // 🎨 Render
-  // -----------------------------
   if (loading) {
     return (
       <SafeAreaView style={styles.safeArea}>
@@ -1190,7 +1070,6 @@ setCurrentClient(null);
           showsVerticalScrollIndicator={false}
         >
           
-          {/* Header */}
           <LinearGradient
             colors={['#45c0e8', '#3aa5c9']}
             style={styles.header}
@@ -1199,7 +1078,6 @@ setCurrentClient(null);
             <Text style={styles.headerSubtitle}>Nueva venta</Text>
           </LinearGradient>
 
-          {/* Selector de categoría */}
           <View style={styles.categoryContainer}>
             <TouchableOpacity 
               style={styles.categoryHeader}
@@ -1249,60 +1127,71 @@ setCurrentClient(null);
             )}
           </View>
 
-          {/* Botones de acción - Organizados en 2 filas */}
-<View style={styles.actionButtonsContainer}>
-  {/* Primera fila */}
-  <View style={styles.actionButtonsRow}>
-    <TouchableOpacity 
-      style={[styles.actionButton, styles.productButton]}
-      onPress={() => setModalVisible(true)}
-    >
-      <MaterialCommunityIcons name="package-variant" size={24} color="white" />
-      <Text style={styles.actionButtonText}>Producto</Text>
-    </TouchableOpacity>
+          <View style={styles.actionButtonsContainer}>
+            <View style={styles.actionButtonsRow}>
+              <TouchableOpacity 
+                style={[styles.actionButton, styles.productButton]}
+                onPress={() => setModalVisible(true)}
+              >
+                <MaterialCommunityIcons name="package-variant" size={24} color="white" />
+                <Text style={styles.actionButtonText}>Producto</Text>
+              </TouchableOpacity>
 
-    <TouchableOpacity 
-      style={[styles.actionButton, styles.advanceButton]}
-      onPress={() => setAdvanceModalVisible(true)}
-    >
-      <MaterialCommunityIcons name="cash-plus" size={24} color="white" />
-      <Text style={styles.actionButtonText}>Avance</Text>
-    </TouchableOpacity>
-  </View>
+              <TouchableOpacity 
+                style={[styles.actionButton, styles.advanceButton]}
+                onPress={() => setAdvanceModalVisible(true)}
+              >
+                <MaterialCommunityIcons name="cash-plus" size={24} color="white" />
+                <Text style={styles.actionButtonText}>Avance</Text>
+              </TouchableOpacity>
+            </View>
 
-  {/* Segunda fila */}
-  <View style={styles.actionButtonsRow}>
-    <TouchableOpacity 
-      style={[styles.actionButton, styles.rechargeButton]}
-      onPress={() => setRechargeModalVisible(true)}
-    >
-      <MaterialCommunityIcons name="cellphone" size={24} color="white" />
-      <Text style={styles.actionButtonText}>Recarga</Text>
-    </TouchableOpacity>
+            <View style={styles.actionButtonsRow}>
+              <TouchableOpacity 
+                style={[styles.actionButton, styles.rechargeButton]}
+                onPress={() => setRechargeModalVisible(true)}
+              >
+                <MaterialCommunityIcons name="cellphone" size={24} color="white" />
+                <Text style={styles.actionButtonText}>Recarga</Text>
+              </TouchableOpacity>
 
-    <TouchableOpacity 
-      style={[styles.actionButton, styles.fiadoButton]}
-      onPress={() => {
-        if (cart.length === 0) {
-          Toast.show({
-            type: "error",
-            text1: "Error",
-            text2: "Agregue productos al carrito primero",
-            position: "top",
-            visibilityTime: 3000,
-          });
-          return;
-        }
-        setFiadoModalVisible(true);
-      }}
-    >
-      <MaterialCommunityIcons name="account-clock" size={24} color="white" />
-      <Text style={styles.actionButtonText}>Fiado</Text>
-    </TouchableOpacity>
-  </View>
-</View>
+              <TouchableOpacity 
+                style={[
+                  styles.actionButton, 
+                  styles.fiadoButton,
+                  (isPayingDebt || hasPreloaded) && styles.fiadoButtonDisabled
+                ]}
+                onPress={() => {
+                  if (isPayingDebt || hasPreloaded) {
+                    Toast.show({
+                      type: "info",
+                      text1: "No disponible",
+                      text2: "No puede fiar mientras procesa un pago de deuda",
+                      position: "top",
+                      visibilityTime: 3000,
+                    });
+                    return;
+                  }
+                  if (cart.length === 0) {
+                    Toast.show({
+                      type: "error",
+                      text1: "Error",
+                      text2: "Agregue productos al carrito primero",
+                      position: "top",
+                      visibilityTime: 3000,
+                    });
+                    return;
+                  }
+                  setFiadoModalVisible(true);
+                }}
+                disabled={isPayingDebt || hasPreloaded}
+              >
+                <MaterialCommunityIcons name="account-clock" size={24} color="white" />
+                <Text style={styles.actionButtonText}>Fiado</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
 
-          {/* Carrito de compras */}
           <View style={styles.cartContainer}>
             <Text style={styles.sectionTitle}>
               Carrito ({cart.length} {cart.length === 1 ? 'ítem' : 'ítems'})
@@ -1315,9 +1204,13 @@ setCurrentClient(null);
                     <Text style={[
                       styles.cartItemName,
                       item.isAdvance && styles.advanceItemName,
-                      item.isRecharge && styles.rechargeItemName
+                      item.isRecharge && styles.rechargeItemName,
+                      item.isFromAgenda && styles.agendaItemName
                     ]}>
-                      {item.nombre}
+                      {item.isFromAgenda ? '📋 ' : ''}{item.nombre}
+                      {item.isFromAgenda && (
+                        <Text style={styles.agendaBadge}> (Deuda)</Text>
+                      )}
                     </Text>
                     {item.isAdvance && item.advanceDetails && (
                       <Text style={styles.advanceDetails}>
@@ -1367,39 +1260,33 @@ setCurrentClient(null);
                     </TouchableOpacity>
                   </View>
                   
-               
-{/* En la sección del carrito, dentro del mapeo de items */}
-<View style={styles.cartItemTotals}>
-  {item.isAdvance ? (
-    // Avance de efectivo
-    <>
-      <Text style={styles.advanceTotalDebito}>
-        Débito: +Bs. {item.precioVentaVES}
-      </Text>
-      <Text style={styles.advanceTotalEfectivo}>
-        Efectivo: {item.precioVentaVESEfectivo > 0 ? '+' : ''}{item.precioVentaVESEfectivo} Bs.
-      </Text>
-    </>
-  ) : item.isRecharge ? (
-    // Recarga
-    <>
-      <Text style={styles.rechargeTotalDebito}>
-        Débito: {item.precioVentaVES} Bs. (egreso)
-      </Text>
-      
-    </>
-  ) : (
-    // Productos normales
-    <>
-      <Text style={styles.cartItemTotalUSD}>
-        USD: ${(item.precioVentaUSD * item.quantity).toFixed(2)}
-      </Text>
-      <Text style={styles.cartItemTotalVES}>
-        VES: Bs. {(item.precioVentaVES * item.quantity).toFixed(2)}
-      </Text>
-    </>
-  )}
-</View>
+                  <View style={styles.cartItemTotals}>
+                    {item.isAdvance ? (
+                      <>
+                        <Text style={styles.advanceTotalDebito}>
+                          Débito: +Bs. {item.precioVentaVES}
+                        </Text>
+                        <Text style={styles.advanceTotalEfectivo}>
+                          Efectivo: {item.precioVentaVESEfectivo > 0 ? '+' : ''}{item.precioVentaVESEfectivo} Bs.
+                        </Text>
+                      </>
+                    ) : item.isRecharge ? (
+                      <>
+                        <Text style={styles.rechargeTotalDebito}>
+                          Débito: {item.precioVentaVES} Bs. (egreso)
+                        </Text>
+                      </>
+                    ) : (
+                      <>
+                        <Text style={styles.cartItemTotalUSD}>
+                          USD: ${(item.precioVentaUSD * item.quantity).toFixed(2)}
+                        </Text>
+                        <Text style={styles.cartItemTotalVES}>
+                          VES: Bs. {(item.precioVentaVES * item.quantity).toFixed(2)}
+                        </Text>
+                      </>
+                    )}
+                  </View>
                 </View>
               ))
             ) : (
@@ -1411,13 +1298,11 @@ setCurrentClient(null);
             )}
           </View>
 
-          {/* Resumen de factura */}
           {cart.length > 0 && (
             <View style={styles.summaryContainer}>
               <Text style={styles.sectionTitle}>Resumen</Text>
               
               {cart.some(item => item.isAdvance) ? (
-                // Resumen para avance de efectivo
                 <>
                   <View style={styles.summaryRow}>
                     <Text style={styles.summaryLabel}>Monto entregado en efectivo:</Text>
@@ -1439,48 +1324,45 @@ setCurrentClient(null);
                   </View>
                 </>
               ) : cart.some(item => item.isRecharge) ? (
-      // Resumen para recarga
-      <>
-        <View style={styles.summaryRow}>
-          <Text style={styles.summaryLabel}>Egreso de débito (para recarga):</Text>
-          <Text style={styles.rechargeTotalDebito}>
-            -Bs. {Math.abs(cart.reduce((sum, item) => sum + (item.precioVentaVES || 0), 0))}
-          </Text>
-        </View>
-        <View style={styles.summaryRow}>
-          <Text style={styles.summaryLabel}>Ingreso del cliente (con recargo):</Text>
-          <Text style={styles.summaryValueVES}>
-            +Bs. {cart.reduce((sum, item) => sum + (item.rechargeDetails?.totalConRecargo || 0), 0)}
-          </Text>
-        </View>
-        <View style={[styles.summaryRow, styles.totalRow]}>
-          <Text style={styles.summaryLabel}>Diferencia neta en débito:</Text>
-          <Text style={styles.summaryValueVES}>
-            Bs. {cart.reduce((sum, item) => sum + (item.rechargeDetails?.totalConRecargo || 0) + (item.precioVentaVES || 0), 0)}
-          </Text>
-        </View>
-        <View style={styles.infoRow}>
-          <MaterialCommunityIcons name="information" size={16} color="#64748b" />
-          <Text style={styles.infoText}>
-            El ingreso se aplicará según el método de pago seleccionado
-          </Text>
-        </View>
-      </>
-    ) : (
-      // Resumen normal
-      <>
-        <View style={styles.summaryRow}>
-          <Text style={styles.summaryLabel}>Total USD:</Text>
-          <Text style={styles.summaryValueUSD}>${subtotalUSD.toFixed(2)}</Text>
-        </View>
-        <View style={styles.summaryRow}>
-          <Text style={styles.summaryLabel}>Total VES:</Text>
-          <Text style={styles.summaryValueVES}>Bs. {subtotalVES.toFixed(2)}</Text>
-        </View>
-      </>
-    )}
+                <>
+                  <View style={styles.summaryRow}>
+                    <Text style={styles.summaryLabel}>Egreso de débito (para recarga):</Text>
+                    <Text style={styles.rechargeTotalDebito}>
+                      -Bs. {Math.abs(cart.reduce((sum, item) => sum + (item.precioVentaVES || 0), 0))}
+                    </Text>
+                  </View>
+                  <View style={styles.summaryRow}>
+                    <Text style={styles.summaryLabel}>Ingreso del cliente (con recargo):</Text>
+                    <Text style={styles.summaryValueVES}>
+                      +Bs. {cart.reduce((sum, item) => sum + (item.rechargeDetails?.totalConRecargo || 0), 0)}
+                    </Text>
+                  </View>
+                  <View style={[styles.summaryRow, styles.totalRow]}>
+                    <Text style={styles.summaryLabel}>Diferencia neta en débito:</Text>
+                    <Text style={styles.summaryValueVES}>
+                      Bs. {cart.reduce((sum, item) => sum + (item.rechargeDetails?.totalConRecargo || 0) + (item.precioVentaVES || 0), 0)}
+                    </Text>
+                  </View>
+                  <View style={styles.infoRow}>
+                    <MaterialCommunityIcons name="information" size={16} color="#64748b" />
+                    <Text style={styles.infoText}>
+                      El ingreso se aplicará según el método de pago seleccionado
+                    </Text>
+                  </View>
+                </>
+              ) : (
+                <>
+                  <View style={styles.summaryRow}>
+                    <Text style={styles.summaryLabel}>Total USD:</Text>
+                    <Text style={styles.summaryValueUSD}>${subtotalUSD.toFixed(2)}</Text>
+                  </View>
+                  <View style={styles.summaryRow}>
+                    <Text style={styles.summaryLabel}>Total VES:</Text>
+                    <Text style={styles.summaryValueVES}>Bs. {subtotalVES.toFixed(2)}</Text>
+                  </View>
+                </>
+              )}
 
-              {/* Botón para seleccionar método de pago */}
               <TouchableOpacity 
                 style={styles.paymentButton}
                 onPress={handlePayment}
@@ -1532,7 +1414,6 @@ setCurrentClient(null);
         </ScrollView>
       </View>
 
-      {/* Modales */}
       <ProductSelectionModal
         visible={modalVisible}
         onClose={() => setModalVisible(false)}
@@ -1641,13 +1522,13 @@ setCurrentClient(null);
       />
 
       <FiadoModal
-  visible={fiadoModalVisible}
-  onClose={() => setFiadoModalVisible(false)}
-  onConfirm={handleFiadoConfirm}
-  cart={cart}
-  userData={userData}
-  empresaId={empresaId}
-/>
+        visible={fiadoModalVisible}
+        onClose={() => setFiadoModalVisible(false)}
+        onConfirm={handleFiadoConfirm}
+        cart={cart}
+        userData={userData}
+        empresaId={empresaId}
+      />
       
       <Toast />
     </SafeAreaView>
@@ -2137,6 +2018,10 @@ infoText: {
   shadowOpacity: 0.1,
   shadowRadius: 4,
   elevation: 3,
+},
+fiadoButtonDisabled: {
+  backgroundColor: '#f39c12',
+  opacity: 0.5,
 },
 });
 
